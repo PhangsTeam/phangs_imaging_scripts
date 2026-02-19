@@ -2,30 +2,16 @@
 Standalone routines related to CASA imaging.
 """
 
-# region Imports and definitions
-
-import os
-import glob, copy, inspect
+import copy
+import inspect
 import logging
+import os
 
+import analysisUtils as au
 import numpy as np
 
-try:
-    import pyfits  # CASA has pyfits, not astropy
-except ImportError:
-    import astropy.io.fits as pyfits
-
-# Analysis utilities
-import analysisUtils as au
-
-# Pipeline versionining
-from .pipelineVersion import version as pipeVer
-
-# CASA stuff
-from . import casaStuff
 from . import casaMaskingRoutines as cmr
-
-# Clean call object
+from . import casaStuff
 from .clean_call import CleanCall
 
 logger = logging.getLogger(__name__)

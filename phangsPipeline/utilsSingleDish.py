@@ -1,16 +1,13 @@
 
 import os
-import numpy as np
 
-from .casaStuff import casa_version, tbtool, msmdtool, metool, qatool
-
-# Analysis utilities
 import analysisUtils as au
+import matplotlib
+import numpy as np
+import pylab as pb
 from analysisUtils import mjdSecondsListToDateTime, mjdsecToUT
 
-# Import pylab for plotting
-import pylab as pb
-import matplotlib
+from .casaStuff import casa_version, tbtool, msmdtool, metool, qatool
 
 casaVersion = "{0}.{1}.{2}".format(*casa_version)
 

@@ -2,7 +2,6 @@
 General purpose utilities.
 """
 
-import numpy as np
 
 def select_from_list(
     master_list, 

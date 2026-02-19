@@ -4,36 +4,20 @@ cubes. These are called as part of the PHANGS post-processing pipeline
 but also may be of general utility.
 """
 
-#region Imports and definitions
-
-import os
-import glob
 import logging
+import os
 
+import analysisUtils as au
 import numpy as np
 import scipy.ndimage as nd
-try:
-    import pyfits  # CASA has pyfits, not astropy
-except ImportError:
-    import astropy.io.fits as pyfits
+from astropy.io import fits
 
-# Analysis utilities
-import analysisUtils as au
-
-# Pipeline versioning
-from .pipelineVersion import version as pipeVer
-
-# CASA stuff
 from . import casaStuff
+from . import __version__
 
 # Logging
-#from .pipelineLogger import PipelineLogger
-#logger = PipelineLogger(__name__)
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-#endregion
 
 #region Check getchunk putchunk memory issue
 
@@ -151,7 +135,7 @@ def copy_dropdeg(
                 return(False)
             os.system('rm -rf '+temp_outfile)
 
-        importfits(fitsimage=infile,
+        casaStuff.importfits(fitsimage=infile,
                    imagename=temp_outfile,
                    zeroblanks=False,
                    overwrite=overwrite)
@@ -189,7 +173,7 @@ def get_mask(infile, huge_cube_workaround=True):
     #    casaStuff.exportfits(imagename=infile + '.temp_mask',
     #                         fitsimage=infile + '.temp.fits',
     #                         stokeslast=False, overwrite=True)
-    #    hdu = pyfits.open(infile + '.temp.fits')[0]
+    #    hdu = fits.open(infile + '.temp.fits')[0]
     #    mask = hdu.data.T[:, :, 0, :]
     #
     #    os.system('rm -rf ' + infile + '.temp_deg_ordered')
@@ -347,7 +331,7 @@ def multiply_cube_by_value(infile, value, brightness_unit, huge_cube_workaround=
     #    casaStuff.exportfits(imagename=infile,
     #                         fitsimage=infile + '.fits',
     #                         overwrite=True)
-    #    hdu = pyfits.open(infile + '.fits')[0]
+    #    hdu = fits.open(infile + '.fits')[0]
     #    hdu.data *= value
     #
     #    hdu.writeto(infile + '.fits', overwrite=True)
@@ -453,7 +437,7 @@ def export_and_cleanup(
 
     # Clean up headers
 
-    hdu = pyfits.open(outfile)
+    hdu = fits.open(outfile)
 
     hdr = hdu[0].header
     data = hdu[0].data
@@ -513,13 +497,9 @@ def export_and_cleanup(
                     logger.info("... fractional deviation: "+str(frac_dev))
 
     # Never forget where you came from
-    hdr['COMMENT'] = 'Produced with PHANGS-ALMA pipeline version ' + pipeVer
+    hdr['COMMENT'] = 'Produced with PHANGS-ALMA pipeline version ' + __version__
 
-    # Overwrite
-    try:
-        hdu.writeto(outfile, clobber=True)
-    except TypeError:
-        hdu.writeto(outfile, overwrite=True)
+    hdu.writeto(outfile, overwrite=True)
 
     return()
 

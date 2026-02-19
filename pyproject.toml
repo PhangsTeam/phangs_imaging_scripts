@@ -1,8 +1,77 @@
+[project]
+
+name = "phangsPipeline"
+version = "4.0.0"
+description = "PHANGS-ALMA Pipeline"
+readme = "README.md"
+requires-python = ">=3.12, <3.13"
+license = {file = "LICENSE"}
+
+authors = [
+    {name = "PHANGS Team"},
+]
+
+# Alphabetically
+maintainers = [
+    {name = "Eric Koch", email = "koch.eric.w@gmail.com"},
+    {name = "Adam Leroy", email = "leroy.42@osu.edu"},
+    {name = "Daizhong Liu", email = "astro.dzliu@gmail.com"},
+    {name = "Erik Rosolowsky", email = "rosolowsky@ualberta.ca"},
+    {name = "Jiayi Sun", email = "astrojysun@outlook.com"},
+    {name = "Thomas Williams", email = "thomas.g.williams@manchester.ac.uk"},
+]
+
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+
+    # License
+    "License :: OSI Approved :: MIT License",
+
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3 :: Only",
+]
+
+dependencies = [
+    "astropy >= 7.2.0",
+    "astroquery >= 0.4.11",
+    "numpy >= 2.3.5",
+    "protobuf == 3.20",
+    "pytz >= 2025.2",
+    "scipy >= 1.16.3",
+    "spectral-cube >= 0.6.7",
+]
+
+# Optional packages for CASA
+[project.optional-dependencies]
+casa = [
+    "casadata >= 2025.9.22",
+    "casaplotms >= 2.7.4",
+    "casarecipes >= 0.4.0",
+    "casashell >= 6.7.3.21",
+    "casatasks >= 6.7.3.21",
+    "casatools >= 6.7.3.21",
+    "casaviewer >= 2.4.4 ; platform_system != 'Darwin'",
+    "pipeline@git+https://open-bitbucket.nrao.edu/scm/pipe/pipeline.git",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/phangsTeam/phangs_imaging_scripts"
+"Bug Reports" = "https://github.com/phangsTeam/phangs_imaging_scripts/issues"
+"Source" = "https://github.com/phangsTeam/phangs_imaging_scripts"
+
+[tool.setuptools.packages.find]
+exclude = [
+    "phangs-alma_keys/*",
+    "scripts/*",
+]
+
 [build-system]
+requires = [
+    "setuptools >= 80.9.0",
+    "setuptools_scm >= 9.2.2",
+    "wheel >= 0.45.1",
+]
 
-requires = ["setuptools",
-            "setuptools_scm",
-            "wheel",
-            "oldest-supported-numpy"]
-
-build-backend = 'setuptools.build_meta'
+build-backend = "setuptools.build_meta"

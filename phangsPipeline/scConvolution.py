@@ -1,10 +1,9 @@
 import logging
 
-import numpy as np
 import astropy.units as u
-from astropy.io import fits
+import numpy as np
 from astropy.convolution import Box1DKernel
-from astropy.convolution import convolve, convolve_fft
+from astropy.io import fits
 from radio_beam import Beam
 from spectral_cube import SpectralCube, LazyMask, Projection
 

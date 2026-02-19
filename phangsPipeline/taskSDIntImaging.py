@@ -9,19 +9,14 @@ particular).
 
 import copy
 import logging
-import os
-import shutil
-
-from . import casaMaskingRoutines as cmr
-from . import casaStuff
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 from casatasks.private.imagerhelpers.imager_base import PySynthesisImager
 from casatasks.private.imagerhelpers.input_parameters import ImagerParameters
-#from casatasks.private.cleanhelper import write_tclean_history, get_func_params
+# from casatasks.private.cleanhelper import write_tclean_history, get_func_params
 from casatasks.private.sdint_helper import *
+
+from . import casaMaskingRoutines as cmr
+from . import casaStuff
 
 # Pull MPI in, if available
 
@@ -34,6 +29,9 @@ except ImportError:
 
 sdintlib = SDINT_helper()
 synu = casaStuff.synthesisutils()
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 # Setup functions

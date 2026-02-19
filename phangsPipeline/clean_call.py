@@ -2,11 +2,11 @@
 This is a dummy CleanCall class for dry run only, or to be inheritted by casaImagingRoutines.CleanCall.
 """
 
-from multiprocessing.sharedctypes import Value
-import numpy as np
+import logging
 import re
 
-import logging
+import numpy as np
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 

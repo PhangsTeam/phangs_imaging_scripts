@@ -4,19 +4,12 @@ etc. This is the program that navigates the galaxy list, directory
 structure, etc. This part is pure python.
 """
 
-import os, sys, re
 import ast
-import glob
 import logging
-from math import floor
+import os
 
-import numpy as np
-
-from . import utilsLines as ll
-from . import utilsLists as list_utils
 from . import utilsKeyReaders as key_readers
-from . import utilsFilenames as fnames
-from . import utilsResolutions
+from . import utilsLists as list_utils
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)

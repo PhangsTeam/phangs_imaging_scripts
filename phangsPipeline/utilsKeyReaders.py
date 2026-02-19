@@ -2,12 +2,10 @@
 Utilities for reading our pipeline-specific keys.
 """
 
-import os, re, ast
-
-# There's room to further reduce code and redundancy here. For now,
-# this may not be worth the time.
-
+import ast
 import logging
+import os
+import re
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)

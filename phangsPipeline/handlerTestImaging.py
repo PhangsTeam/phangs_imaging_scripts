@@ -38,15 +38,14 @@ Example:
     this_tih.plot_image_gallery(output_file='image_gallery.png')
 """
 
-import os
 import logging
-import numpy as np
+import os
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 # Check casa environment by importing CASA-only packages
-from .casa_check import is_casa_installed
+from .check_imports import is_casa_installed
 casa_enabled = is_casa_installed()
 
 if casa_enabled:

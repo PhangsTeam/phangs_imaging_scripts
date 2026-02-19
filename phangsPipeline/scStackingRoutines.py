@@ -1,13 +1,11 @@
-import numpy as np
-import scipy.ndimage as nd
-
 import astropy.units as u
 import astropy.wcs as wcs
+import numpy as np
 from astropy.io import fits
-
 from spectral_cube import SpectralCube, Projection
 
 from .scDerivativeRoutines import convert_and_reproject
+
 
 def channelShiftVec(x, ChanShift):
     """Shift an array of spectra by some number of channels using the FFT.

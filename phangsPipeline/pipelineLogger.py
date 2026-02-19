@@ -1,13 +1,13 @@
-
 import logging, os
 
-DefaultLevel = 'DEBUG'
+# Ensure CASA is installed
+from .check_imports import is_casa_installed
 
-try:
+casa_enabled = is_casa_installed()
+if is_casa_installed():
     from . import casaStuff
-    HasCasaLog = True
-except:
-    HasCasaLog = False
+
+DefaultLevel = 'DEBUG'
 
 
 class PipelineLogger(logging.getLoggerClass()):
@@ -34,10 +34,10 @@ class PipelineLogger(logging.getLoggerClass()):
         #print('PipelineLogger.__del__')
         if self.file_handler is not None:
             self.file_handler.close()
-    
+
     def hasCasaLog(self):
-        global HasCasaLog
-        return HasCasaLog
+        casa_enabled = is_casa_installed()
+        return casa_enabled
         #return ('casalog' in globals())
     
     def setCasaOrigin(self):

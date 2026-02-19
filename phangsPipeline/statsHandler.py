@@ -9,26 +9,17 @@ analysis. Other users should feel free to adapt this to their uses,
 but it's not essential or generally integrated.
 """
 
-from __future__ import print_function
-import os, sys, re, shutil
 import json
-import glob
 import logging
-import numpy as np
-import scipy.ndimage.morphology as morph
-import scipy.ndimage as nd
+import os
+
+from . import casaImagingRoutines as cir
+from . import handlerKeys
+from . import handlerTemplate
+from . import utilsFilenames
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-# Check casa environment by importing CASA-only packages
-from .casa_check import is_casa_installed
-casa_enabled = is_casa_installed()
-
-from . import handlerTemplate
-from . import handlerKeys
-from . import utilsFilenames
-from . import casaImagingRoutines as cir
 
 
 class StatsHandler(handlerTemplate.HandlerTemplate):
@@ -215,10 +206,7 @@ if __name__ == '__main__':
     master_key = 'keys/master_key.txt'
     #master_key = '/Users/dzliu/Work/AlmaPhangs/Works/20200630_PHANGS_ALMA_clean_records/test_phangs_working_dir/keys/master_key.txt'
     if not os.path.isfile(master_key):
-        if sys.version_info.major <= 2:
-            master_key = raw_input("Please input your master key file path: ")
-        else:
-            master_key = input("Please input your master key file path: ")
+        master_key = input("Please input your master key file path: ")
     
     if master_key.find("'") >= 0:
         master_key = master_key.replace("'", "")

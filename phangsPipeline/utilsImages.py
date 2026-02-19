@@ -1,17 +1,12 @@
 # Routines relates to python (not CASA) image handling.
 
-import numpy as np
-import os
-import re
-import warnings
-import math
-
 import astropy.units as u
-from astropy.units import Quantity
-
-from astropy.io import fits
-from astropy.wcs import WCS
+import numpy as np
 from astropy.coordinates import SkyCoord
+from astropy.io import fits
+from astropy.units import Quantity
+from astropy.wcs import WCS
+
 
 # ------------------------------------------------------------------------
 # Make new headers

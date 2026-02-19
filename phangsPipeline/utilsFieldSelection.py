@@ -1,14 +1,15 @@
 """
 utilsFieldSelection.py
 """
-import os, sys, re, shutil
+import os
+import re
+import shutil
+
+import analysisUtils as aU
 import numpy as np
 
-# CASA stuff
 from . import casaStuff
 
-#sys.path.insert(0, '/software/casa/analysis_scripts')
-import analysisUtils as aU
 tb = aU.createCasaTool(casaStuff.tbtool)
 split = casaStuff.split
 
@@ -224,10 +225,5 @@ def process_ms_list(
             if verbose:
                 print('Splitting {!r} field={!r} -> {!r} ({}/{})'.format(vis, valid_fields, outputvis, i+1, len(ms_list)))
             split(vis, outputvis, field=valid_fields, datacolumn=datacolumn)
+            if verbose:
                 print('Processed {!r} -> {!r} ({}/{})'.format(vis, outputvis, i+1, len(ms_list)))
-
-
-
-
-
-

@@ -2,25 +2,9 @@
 
 import logging
 
-import numpy as np
-
-import scipy.ndimage as nd
-import scipy.ndimage.morphology as morph
-import scipy.stats as ss
-from scipy.signal import savgol_coeffs
-
-import astropy.wcs as wcs
-import astropy.units as u
-from astropy.units import Quantity
-
-from astropy.convolution import convolve, Gaussian2DKernel
-from astropy.io import fits
-from astropy.stats import mad_std
 from astropy.table import Table
 
 from .utilsImages import *
-
-from .pipelineVersion import tableversion, version
 
 np.seterr(divide='ignore', invalid='ignore')
 

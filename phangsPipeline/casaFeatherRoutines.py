@@ -3,38 +3,18 @@ Standalone routines that relate to single dish-interferometer
 combination using CASA's feather.
 """
 
-#region Imports and definitions
-
-import os
-import glob
 import logging
+import os
 
-import numpy as np
-try:
-    import pyfits  # CASA has pyfits, not astropy
-except ImportError:
-    import astropy.io.fits as pyfits
-
-# Analysis utilities
 import analysisUtils as au
+import numpy as np
 
-# Pipeline versionining
-from .pipelineVersion import version as pipeVer
-
-# CASA stuff
+from . import casaCubeRoutines as ccr
 from . import casaStuff
 
-# Other pipeline stuff
-from . import casaCubeRoutines as ccr
-
 # Logging
-#from .pipelineLogger import PipelineLogger
-#logger = PipelineLogger(__name__)
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-#endregion
 
 #region Feathering and single dish routines
 

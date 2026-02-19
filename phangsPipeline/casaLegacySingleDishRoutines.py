@@ -33,70 +33,28 @@ Still need to do (probably outdated):
   - 2021-07-05 can not split with ant='0&0' ? if no split, can not obtain a reasonable final fits image cube?!
 
 """
-
-# python2 to python3: print, sort
-
-# Note that some sd* commands are deleted since CASA 5.
-# see https://casa.nrao.edu/casadocs/casa-5.0.0/introduction/release-notes-50
-# The following single dish tasks are renamed (name in CASA 4.7 -> 5.0). Note all tasks with 'old'
-# at the end of the name will be deleted in future releases.
-# tsdbaseline -> sdbaseline
-# tsdcal -> sdcal
-# tsdfit -> sdfit
-# tsdsmooth -> sdsmooth
-# sdaverage -> sdaverageold
-# sdbaseline -> sdbaselineold
-# sdbaseline2 -> sdbaseline2old
-# sdcal -> sdcalold
-# sdcal2 -> sdcal2old
-# sdcoadd -> sdcoaddold
-# sdfit -> sdfitold
-# sdflag -> sdflagold
-# sdflagmanager -> sdflagmanager
-# sdgrid -> sdgridold
-# sdlist -> sdlistold
-# sdmath -> sdmathold
-# sdplot -> sdplotold
-# sdreduce -> sdreduceold
-# sdsave -> sdsaveold
-# sdscale -> sdscaleold
-# sddstat -> sdstatold
-
-# ASAP data format will also be disabled since CASA 5.
-# see https://casa.nrao.edu/casadocs/casa-5.4.1/single-dish-calibration/future-development-goals-for-casa-single-dish
-# Use plotms to replace sdplot,
-# see https://casa.nrao.edu/docs/cookbook/casa_cookbook009.html
-# TODO
-
-#region Imports and definitions
-
-import os, sys, re, shutil, inspect, copy, time, datetime, json, ast
-import numpy as np
-from scipy.ndimage import label
+import ast
+import copy
+import datetime
 import glob
-import tarfile
-
+import json
 import logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+import os
+import re
+import shutil
+import tarfile
+import time
 
-# Analysis utilities
 import analysisUtils as au
+import numpy as np
+
+from . import casaStuff
+from .utilsSingleDish import getTPSampling, get_first_arr_val
+
 es = au.stuffForScienceDataReduction()
 
-from .utilsSingleDish import getTPSampling, get_first_arr_val
-#from analysisUtils import getTPSampling
-
-# CASA stuff
-from . import casaStuff
-
-# Spectral lines
-from . import utilsLines as lines
-
-# Pipeline versionining
-from .pipelineVersion import version as pipeVer
-
-#endregion
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 #region Routines for basic characterization
 
@@ -115,14 +73,7 @@ path_script = '../script/'       # Path to the script folder.
 path_raw    = '../raw/'          # Path to the raw folder.
 path_dataproduct = '../data/'    # Path to data products.
 
-
-# precasa5
-if hasattr(casaStuff, 'sdsave'):
-    precasa5 = True
-    fsuffix = '.asap'
-else:
-    precasa5 = False
-    fsuffix = '.ms'
+fsuffix = '.ms'
 
 # Check if data was calibrated with the pipeline
 def checkpipeline():
@@ -270,45 +221,24 @@ def scaleAutocorr(vis, scale=1., antenna='', spw='', field='', scan=''):
 
     mymsmd.close()
 
-    if precasa5:
-        datacolumn = getDataColumnName(vis)
-
-        logger.info("Multiplying %s to the dataset %s column %s." % (str(scale), vis, datacolumn))
-        logger.info("The selection criteria are '%s'." % (" && ".join(conditions)))
-
-        mytb.open(vis, nomodify=False)
-        subtb = mytb.query(" && ".join(conditions))
+    logger.info("Opening the table "+vis)
+    mytb.open(vis, nomodify=False)
+    subtb = mytb.query(" && ".join(conditions))
+    datacolumns = []
+    for datacolumn in subtb.colnames():
+        if datacolumn in ['DATA','FLOAT_DATA','MODEL_DATA','CORRECTED_DATA']:
+            datacolumns.append(datacolumn)
+    for datacolumn in datacolumns:
         try:
             data = subtb.getcol(datacolumn)
             logger.info("Dimension of the selected data: %s" % str(data.shape))
             subtb.putcol(datacolumn, data*scale)
         except:
-            logger.info("An error occurred upon reading/writing the data.")
-        finally:
-            logger.info("Closing the table.")
-            mytb.flush()
-            subtb.close()
-            mytb.close()
-    else:
-
-        logger.info("Opening the table "+vis)
-        mytb.open(vis, nomodify=False)
-        subtb = mytb.query(" && ".join(conditions))
-        datacolumns = []
-        for datacolumn in subtb.colnames():
-            if datacolumn in ['DATA','FLOAT_DATA','MODEL_DATA','CORRECTED_DATA']:
-                datacolumns.append(datacolumn)
-        for datacolumn in datacolumns:
-            try:
-                data = subtb.getcol(datacolumn)
-                logger.info("Dimension of the selected data: %s" % str(data.shape))
-                subtb.putcol(datacolumn, data*scale)
-            except:
-                logger.info("An error occurred upon reading/writing the data column "+datacolumn+"! The scaleAutocorr function may have failed!")
-        logger.info("Closing the table.")
-        mytb.flush()
-        subtb.close()
-        mytb.close()
+            logger.info("An error occurred upon reading/writing the data column "+datacolumn+"! The scaleAutocorr function may have failed!")
+    logger.info("Closing the table.")
+    mytb.flush()
+    subtb.close()
+    mytb.close()
 
 # Create vector with antenna names
 def read_ants_names(filename):
@@ -795,7 +725,6 @@ def import_and_split_ant(filename, precycle7=True, doallants=True, dosplitants=T
     Args:
         filename (str): The data name for output with suffix ".ms". Does not include the file path, which should be defined in the global variable `path_raw`.
         precycle7 (bool): Whether the data is taken pre-Cycle7, i.e., Cycle 0-6.
-        precasa5 (bool): Whether using pre-CASA5 versions, i.e., CASA 3.X.X-4.X.X.
         doallants (bool): Whether making an MS data with all antennae in it.
     """
     # <TODO> Can we be more smart on defining the precycle7 variable?
@@ -843,7 +772,7 @@ def import_and_split_ant(filename, precycle7=True, doallants=True, dosplitants=T
             process_caldevice=False,
             with_pointing_correction=True)
 
-        if precycle7 and precasa5:
+        if precycle7:
 
             # Transfer specific flags (BDF flags) from the ADSM to the MS file
             logger.info(os.environ['CASAPATH'].split()[0]+'/bin/bdflags2MS -f "COR DELA INT MIS SIG SYN TFB WVR ZER" '+filename0+' '+filename)
@@ -902,10 +831,6 @@ def import_and_split_ant(filename, precycle7=True, doallants=True, dosplitants=T
     if doallants:
         cp_data_dir(filename, filename+'.allant'+fsuffix)
 
-    # if precasa5, always dosplitants
-    if precasa5:
-        dosplitants = True
-
     # if dosplitants, make an MS for each antenna, with a file name like filename+'.'+ant+fsuffix
     if dosplitants:
         # 1.4 Split by antenna
@@ -915,65 +840,49 @@ def import_and_split_ant(filename, precycle7=True, doallants=True, dosplitants=T
         vec_ants = [s for s in vec_ants_t if any(xs in s for xs in ['PM','DV'])]
         for ant in vec_ants:
             rm_data_dir(filename+'.'+ant+fsuffix)
-        if precasa5:
-            casaStuff.sdsave(infile = filename,
-                splitant = True,
-                outfile = filename+fsuffix,
-                overwrite = True)
-                # note that output file names will be filename+'.'+ant+fsuffix
 
-            #1.5 sdlist
-            logger.info("1.5 Create sdlist for each splitted file.")
-            for ant in vec_ants:
-                if os.path.exists('obs_lists/'+filename+'.'+ant+fsuffix+'.sdlist'):
-                    os.remove('obs_lists/'+filename+'.'+ant+fsuffix+'.sdlist')
-                casaStuff.sdlist(infile = filename+'.'+ant+fsuffix+'',
-                    outfile = 'obs_lists/'+filename+'.'+ant+fsuffix+'.sdlist')
+        for ant in vec_ants:
+            use_casa_split_antenna = True
+            if use_casa_split_antenna:
+                logger.info('Running split to make '+filename+'.'+ant+fsuffix+', datacolumn is '+getDataColumnForSplit(filename))
+                casaStuff.split(vis = filename,
+                    outputvis = filename+'.'+ant+fsuffix,
+                    antenna = '%s&&&'%(ant),
+                    datacolumn = getDataColumnForSplit(filename))
+                    #<Note># CASA split with antenna = '0&0' does not work, should use '0&&&' to get only autocorrelations,
+                    #        see https://casa.nrao.edu/docs/taskref/split-task.html
+            else:
+                #<TODO># these are not well tested
+                # this is an alternative way to split single antenna autocorr data
+                filename_in = filename
+                filename_out = filename+'.'+ant+fsuffix+'.tmp'
+                cp_data_dir(filename_in, filename_out)
+                #
+                other_ants = copy.copy(vec_ants)
+                other_ants.remove(ant)
+                str_other_ants = ';'.join(other_ants)
+                logger.info('Running flagdata to flag '+str_other_ants+' in '+filename_out)
+                casaStuff.flagdata(vis = filename_out,
+                                   mode = 'manual',
+                                   antenna = str_other_ants,
+                                   action = 'apply')
+                #
+                filename_in = filename+'.'+ant+fsuffix+'.tmp'
+                filename_out = filename+'.'+ant+fsuffix
+                rm_data_dir(filename_out)
+                logger.info('Running split to make '+filename_out+', datacolumn is '+getDataColumnForSplit(filename_in))
+                casaStuff.split(vis = filename_in,
+                                outputvis = filename_out,
+                                keepflags = False,
+                                datacolumn = getDataColumnForSplit(filename_in))
 
-        else:
-
-            for ant in vec_ants:
-                use_casa_split_antenna = True
-                if use_casa_split_antenna:
-                    logger.info('Running split to make '+filename+'.'+ant+fsuffix+', datacolumn is '+getDataColumnForSplit(filename))
-                    casaStuff.split(vis = filename,
-                        outputvis = filename+'.'+ant+fsuffix,
-                        antenna = '%s&&&'%(ant),
-                        datacolumn = getDataColumnForSplit(filename))
-                        #<Note># CASA split with antenna = '0&0' does not work, should use '0&&&' to get only autocorrelations,
-                        #        see https://casa.nrao.edu/docs/taskref/split-task.html
-                else:
-                    #<TODO># these are not well tested
-                    # this is an alternative way to split single antenna autocorr data
-                    filename_in = filename
-                    filename_out = filename+'.'+ant+fsuffix+'.tmp'
-                    cp_data_dir(filename_in, filename_out)
-                    #
-                    other_ants = copy.copy(vec_ants)
-                    other_ants.remove(ant)
-                    str_other_ants = ';'.join(other_ants)
-                    logger.info('Running flagdata to flag '+str_other_ants+' in '+filename_out)
-                    casaStuff.flagdata(vis = filename_out,
-                                       mode = 'manual',
-                                       antenna = str_other_ants,
-                                       action = 'apply')
-                    #
-                    filename_in = filename+'.'+ant+fsuffix+'.tmp'
-                    filename_out = filename+'.'+ant+fsuffix
-                    rm_data_dir(filename_out)
-                    logger.info('Running split to make '+filename_out+', datacolumn is '+getDataColumnForSplit(filename_in))
-                    casaStuff.split(vis = filename_in,
-                                    outputvis = filename_out,
-                                    keepflags = False,
-                                    datacolumn = getDataColumnForSplit(filename_in))
-
-            #1.5 sdlist
-            logger.info("1.5 Create listobs for each splitted file.")
-            for ant in vec_ants:
-                if os.path.exists('obs_lists/'+filename+'.'+ant+fsuffix+'.listobs.txt'):
-                    os.remove('obs_lists/'+filename+'.'+ant+fsuffix+'.listobs.txt')
-                casaStuff.listobs(vis = filename+'.'+ant+fsuffix+'',
-                    listfile = 'obs_lists/'+filename+'.'+ant+fsuffix+'.listobs.txt')
+        #1.5 sdlist
+        logger.info("1.5 Create listobs for each splitted file.")
+        for ant in vec_ants:
+            if os.path.exists('obs_lists/'+filename+'.'+ant+fsuffix+'.listobs.txt'):
+                os.remove('obs_lists/'+filename+'.'+ant+fsuffix+'.listobs.txt')
+            casaStuff.listobs(vis = filename+'.'+ant+fsuffix+'',
+                listfile = 'obs_lists/'+filename+'.'+ant+fsuffix+'.listobs.txt')
 
 
     with open('done_step_1_for_'+filename[0:-3], 'w') as outlogfile:
@@ -1133,59 +1042,36 @@ def counts2kelvin(filename, ant_list=None, spws_info=None, spwmap=None, doplots=
 
         rm_data_dir(filename_out)
 
-        if precasa5:
+        cp_data_dir(filename_in, filename_out)
 
-            logger.info('Running sdcal2 to make '+filename_out)
-            casaStuff.sdcal2(infile = filename_in,
-                    calmode = 'ps,tsys,apply',
-                    spw = spws_all_str,
-                    tsysspw = spws_tsys_str,
-                    spwmap = spwmap,
-                    outfile = filename_out,
-                    overwrite = True)
+        logger.info('Running sdcal to make '+filename_out)
+        casaStuff.sdcal(infile = filename_out,
+                calmode = 'ps,tsys,apply',
+                spw = spws_all_str,
+                spwmap = spwmap,
+                outfile = filename_out,
+                overwrite = True,
+                )
+        # -- https://casa.nrao.edu/casadocs/casa-5.4.1/single-dish-calibration/single-dish-data-calibration-and-reduction
+        # Note that we didn't specify the Tsys spectral windows in the call to sdcal.
+        # For ALMA single-dish data from Cycle 3 onward, this is okay since the Tsys
+        # and science data share the same spectral window.
+        # Alternatively, the mapping between the Tsys
+        # and science spectral windows can be explicitly set with spwmap and spw.
+        # In this case, we would use:
+        # sdcal(infile=vis, calmode='ps,tsys,apply', spwmap={17:[17], 19:[19], 21:[21],23:[23]}, spw='17,19,21,23')
 
-            if doplots == True:
-                es.SDcheckSpectra(filename_out, spwIds=spws_scie_str, interactive=False)
-
-        else:
-
-            cp_data_dir(filename_in, filename_out)
-
-            logger.info('Running sdcal to make '+filename_out)
-            casaStuff.sdcal(infile = filename_out,
-                    calmode = 'ps,tsys,apply',
-                    spw = spws_all_str,
-                    spwmap = spwmap,
-                    outfile = filename_out,
-                    overwrite = True,
-                    )
-            # -- https://casa.nrao.edu/casadocs/casa-5.4.1/single-dish-calibration/single-dish-data-calibration-and-reduction
-            # Note that we didn't specify the Tsys spectral windows in the call to sdcal.
-            # For ALMA single-dish data from Cycle 3 onward, this is okay since the Tsys
-            # and science data share the same spectral window.
-            # Alternatively, the mapping between the Tsys
-            # and science spectral windows can be explicitly set with spwmap and spw.
-            # In this case, we would use:
-            # sdcal(infile=vis, calmode='ps,tsys,apply', spwmap={17:[17], 19:[19], 21:[21],23:[23]}, spw='17,19,21,23')
-
-            if doplots == True:
-                es.SDcheckSpectra(filename_out, msName=filename_out, spwIds=spws_scie_str, interactive=False)
-                # must use new analysisUtils.py with getCasaVersion()
-                # this will create plot files in directory filename_out+'.plots'
-                # note that these plots are uncalibrated
+        if doplots == True:
+            es.SDcheckSpectra(filename_out, msName=filename_out, spwIds=spws_scie_str, interactive=False)
+            # must use new analysisUtils.py with getCasaVersion()
+            # this will create plot files in directory filename_out+'.plots'
+            # note that these plots are uncalibrated
 
 
         apply_nl = check_date_nonlinearity(filename)
         if apply_nl == True:
             logger.info("3.2 Applying non-linearity correction factor if data were obtained before the 2015-10-01")
-            if precasa5:
-                casaStuff.sdscale(infile = filename_out,
-                        outfile = filename_out,
-                        factor = 1.25,
-                        overwrite=True)
-            else:
-                #raise Exception('Data need pre-CASA-5 version for sdscale!')
-                pass #<TODO># this is for debug, uncomment this!
+            logger.warning("This only works in pre-CASA 5!")
 
         # end for ant loop
 
@@ -1263,24 +1149,17 @@ def extract_cube(filename, source, name_line, ant_list=None, freq_rest=None, spw
                 os.remove(plotfile)
             if not os.path.exists(plotfile):
                 logger.info("4.1 Plotting each spw")
-                if precasa5:
-                    logger.info('Running sdplot to make '+plotfile)
-                    casaStuff.sdplot(infile=filename_in,
-                        plottype='spectra', specunit='channel',
-                        timeaverage=True, stack='p',
-                        outfile=plotfile)
-                else:
-                    logger.info('Running plotms to make '+plotfile)
-                    casaStuff.plotms(vis=filename_in,
-                        ydatacolumn=getDataColumnForPlotMS(filename_in),
-                        intent='OBSERVE_TARGET#ON_SOURCE',
-                        field=source, spw=str(spw_line),
-                        averagedata=True, avgtime='86400', avgscan=True,
-                        xaxis='vel', yaxis='amp', coloraxis='ant1', showlegend=True,
-                        iteraxis='corr', xselfscale=True, xsharedaxis=True, gridrows=2,
-                        highres=True, dpi=300, showmajorgrid=True, majorstyle='dot',
-                        plotfile=plotfile, overwrite=True,
-                        )
+                logger.info('Running plotms to make '+plotfile)
+                casaStuff.plotms(vis=filename_in,
+                    ydatacolumn=getDataColumnForPlotMS(filename_in),
+                    intent='OBSERVE_TARGET#ON_SOURCE',
+                    field=source, spw=str(spw_line),
+                    averagedata=True, avgtime='86400', avgscan=True,
+                    xaxis='vel', yaxis='amp', coloraxis='ant1', showlegend=True,
+                    iteraxis='corr', xselfscale=True, xsharedaxis=True, gridrows=2,
+                    highres=True, dpi=300, showmajorgrid=True, majorstyle='dot',
+                    plotfile=plotfile, overwrite=True,
+                    )
 
         # Get the string of the channels to be extracted from the original cube
         coords = read_source_coordinates(filename,source)
@@ -1291,36 +1170,20 @@ def extract_cube(filename, source, name_line, ant_list=None, freq_rest=None, spw
 
         rm_data_dir(filename_out)
 
-        if precasa5:
-            logger.info('Running sdsave to make '+filename_out)
-            casaStuff.sdsave(infile=filename_in,
-                   field=source,
-                   spw=spw_extr,
-                   outfile=filename_out)
+        logger.info('Running split to make '+filename_out+', datacolumn is '+getDataColumnForSplit(filename_in))
+        casaStuff.split(vis=filename_in,
+               field=source,
+               spw=spw_extr,
+               outputvis=filename_out,
+               datacolumn=getDataColumnForSplit(filename_in))
 
-            listfile = 'obs_list/'+filename_out+'.list'
-            if os.path.exists(listfile):
-                logger.info('Deleting '+listfile)
-                os.remove(listfile)
-            logger.info('Running sdlist to make '+listfile)
-            casaStuff.sdlist(infile=filename_out,
-                   outfile=listfile)
-
-        else:
-            logger.info('Running split to make '+filename_out+', datacolumn is '+getDataColumnForSplit(filename_in))
-            casaStuff.split(vis=filename_in,
-                   field=source,
-                   spw=spw_extr,
-                   outputvis=filename_out,
-                   datacolumn=getDataColumnForSplit(filename_in))
-
-            listfile = 'obs_list/'+filename_out+'.listobs.txt'
-            if os.path.exists(listfile):
-                logger.info('Deleting '+listfile)
-                os.remove(listfile)
-            logger.info('Running listobs to make '+listfile)
-            casaStuff.listobs(vis=filename_out,
-                   listfile=listfile)
+        listfile = 'obs_list/'+filename_out+'.listobs.txt'
+        if os.path.exists(listfile):
+            logger.info('Deleting '+listfile)
+            os.remove(listfile)
+        logger.info('Running listobs to make '+listfile)
+        casaStuff.listobs(vis=filename_out,
+               listfile=listfile)
 
         if doplots == True:
             logger.info("4.3 Plotting the line spectrum averaged in time")
@@ -1331,26 +1194,17 @@ def extract_cube(filename, source, name_line, ant_list=None, freq_rest=None, spw
             plotfile = 'plots/'+filename_out+'.line.'+name_line2+'.spec.png'
             if os.path.exists(plotfile):
                 os.remove(plotfile)
-            if precasa5:
-                logger.info('Running sdplot to make '+plotfile)
-                casaStuff.sdplot(infile=filename_out,
-                    plottype='spectra', specunit='km/s',
-                    restfreq=str(freq_rest)+'MHz',
-                    timeaverage=True, stack='p',
-                    polaverage=True,
-                    outfile=plotfile) # no outfile?
-            else:
-                logger.info('Running plotms to make '+plotfile)
-                casaStuff.plotms(vis=filename_out,
-                    ydatacolumn=getDataColumnForPlotMS(filename_out),
-                    intent='OBSERVE_TARGET#ON_SOURCE',
-                    restfreq=str(freq_rest)+'MHz',
-                    averagedata=True, avgtime='86400', avgscan=True,
-                    xaxis='vel', yaxis='amp', coloraxis='ant1', showlegend=True,
-                    iteraxis='corr', xselfscale=True, xsharedaxis=True, gridrows=2,
-                    highres=True, dpi=300, showmajorgrid=True, majorstyle='dot',
-                    plotfile=plotfile, overwrite=True,
-                    )
+            logger.info('Running plotms to make '+plotfile)
+            casaStuff.plotms(vis=filename_out,
+                ydatacolumn=getDataColumnForPlotMS(filename_out),
+                intent='OBSERVE_TARGET#ON_SOURCE',
+                restfreq=str(freq_rest)+'MHz',
+                averagedata=True, avgtime='86400', avgscan=True,
+                xaxis='vel', yaxis='amp', coloraxis='ant1', showlegend=True,
+                iteraxis='corr', xselfscale=True, xsharedaxis=True, gridrows=2,
+                highres=True, dpi=300, showmajorgrid=True, majorstyle='dot',
+                plotfile=plotfile, overwrite=True,
+                )
 
         # end for ant loop
 
@@ -1444,28 +1298,17 @@ def baseline(filename, source, name_line, ant_list=None, freq_rest=None, spws_in
             plotfile = 'plots/'+filename_out+'_baseline_corrected.png'
             if os.path.exists(plotfile):
                 os.remove(plotfile)
-            if precasa5:
-                logger.info('Running sdplot to make '+plotfile)
-                casaStuff.sdplot(infile=filename_out,
-                    plottype='spectra',
-                    specunit='km/s',
-                    restfreq=str(freq_rest)+'MHz',
-                    timeaverage=True,
-                    stack='p',
-                    outfile=plotfile,
-                    polaverage=True)
-            else:
-                logger.info('Running plotms to make '+plotfile)
-                casaStuff.plotms(vis=filename_out,
-                    ydatacolumn=getDataColumnForPlotMS(filename_out),
-                    intent='OBSERVE_TARGET#ON_SOURCE',
-                    restfreq=str(freq_rest)+'MHz',
-                    averagedata=True, avgtime='86400', avgscan=True,
-                    xaxis='vel', yaxis='amp', coloraxis='ant1', showlegend=True,
-                    iteraxis='corr', xselfscale=True, xsharedaxis=True, gridrows=2,
-                    highres=True, dpi=300, showmajorgrid=True, majorstyle='dot',
-                    plotfile=plotfile, overwrite=True,
-                    )
+            logger.info('Running plotms to make '+plotfile)
+            casaStuff.plotms(vis=filename_out,
+                ydatacolumn=getDataColumnForPlotMS(filename_out),
+                intent='OBSERVE_TARGET#ON_SOURCE',
+                restfreq=str(freq_rest)+'MHz',
+                averagedata=True, avgtime='86400', avgscan=True,
+                xaxis='vel', yaxis='amp', coloraxis='ant1', showlegend=True,
+                iteraxis='corr', xselfscale=True, xsharedaxis=True, gridrows=2,
+                highres=True, dpi=300, showmajorgrid=True, majorstyle='dot',
+                plotfile=plotfile, overwrite=True,
+                )
 
         os.system('mv  *blparam.txt  obs_lists/')
 
@@ -1520,15 +1363,7 @@ def concat_ants(filename, name_line, ant_list=None, freq_rest=None, spws_info=No
             filename_in = filename+'.'+ant+fin
             filename_out = filename+'.'+ant+finout
             rm_data_dir(filename_out)
-            if precasa5:
-                # Converting from ASAP to MS
-                logger.info("6.1 Converting from ASAP to MS")
-                logger.info('Running sdsave to make '+filename_out)
-                casaStuff.sdsave(infile = filename_in,
-                    outfile = filename_out,
-                    outform='MS2')
-            else:
-                cp_data_dir(filename_in, filename_out) # they are all *.ms, just copy it over
+            cp_data_dir(filename_in, filename_out) # they are all *.ms, just copy it over
             lis_fils.append(filename_out)
         # Concatenation
         logger.info("6.2 Concatenating antennas")
@@ -1553,10 +1388,7 @@ def concat_ants(filename, name_line, ant_list=None, freq_rest=None, spws_info=No
     logger.info('Running scaleAutocorr on '+filename+'.cal.jy'+'.'+name_line)
     for ant in jyperk.keys():
         logger.info('ant: %s, spw_line: %s, jyperk[ant][spw_line][\'mean\']: %s'%(ant, spw_line, jyperk[ant][spw_line]['mean']))
-        if precasa5:
-            scaleAutocorr(vis=filename+'.cal.jy'+'.'+name_line, scale=jyperk[ant][spw_line]['mean'], antenna=ant, spw=spw_line) # in asap spw number does not change after split?
-        else:
-            scaleAutocorr(vis=filename+'.cal.jy'+'.'+name_line, scale=jyperk[ant][spw_line]['mean'], antenna=ant, spw=0) # spw is always 0
+        scaleAutocorr(vis=filename+'.cal.jy'+'.'+name_line, scale=jyperk[ant][spw_line]['mean'], antenna=ant, spw=0) # spw is always 0
 
 
     # Rename line spw to spw=0
@@ -1569,14 +1401,9 @@ def concat_ants(filename, name_line, ant_list=None, freq_rest=None, spws_info=No
     finout = '.cal.jy'+'.'+name_line
     rm_data_dir(filename+finout)
     logger.info('Running split to make '+filename+finout+', datacolumn is '+getDataColumnForSplit(filename+fin))
-    if precasa5:
-        casaStuff.split(vis=filename+fin,
-             outputvis=filename+finout,
-             datacolumn='all')
-    else:
-        casaStuff.split(vis=filename+fin,
-             outputvis=filename+finout,
-             datacolumn=getDataColumnForSplit(filename+fin))
+    casaStuff.split(vis=filename+fin,
+         outputvis=filename+finout,
+         datacolumn=getDataColumnForSplit(filename+fin))
 
 
     # listobs
@@ -2006,8 +1833,7 @@ def run_ALMA_TP_tools(
                     )
 
                 if not dosplitants:
-                    if not precasa5:
-                        vec_ants = None
+                    vec_ants = None
 
                 # Remove known problematic datasets
                 if vec_ants is not None:

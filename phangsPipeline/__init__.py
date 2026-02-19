@@ -1,36 +1,47 @@
-# Licensed under a MIT license - see LICENSE.rst
+from importlib.metadata import PackageNotFoundError, version
 
-# Packages may add whatever they like to this file, but
-# should keep this content at the top.
-# ----------------------------------------------------------------------------
-from ._astropy_init import *   # noqa
-# ----------------------------------------------------------------------------
+# Ensure CASA is installed
+from .check_imports import is_casa_installed, is_spectral_cube_installed
 
-from .casa_check import is_casa_installed
 casa_enabled = is_casa_installed()
-
-from .phangsLogger import setup_logger
-from .handlerKeys import KeyHandler
-from .handlerSingleDish import SingleDishHandler
-from .handlerAlmaDownload import AlmaDownloadHandler
-from .handlerVis import VisHandler
-from .handlerPostprocess import PostProcessHandler
-from .handlerDerived import DerivedHandler
-from .handlerRelease import ReleaseHandler
-
-if casa_enabled:
-    from .handlerImaging import ImagingHandler
-    from .handlerTestImaging import TestImagingHandler
-
-__all__ = ["setup_logger", "KeyHandler", "SingleDishHandler", "VisHandler", "PostProcessHandler", "DerivedHandler",
-           "ReleaseHandler"]
-
-if casa_enabled:
-    __all__.append("ImagingHandler")
-    __all__.append("TestImagingHandler")
+spectral_cube_enabled = is_spectral_cube_installed()
 
 try:
-    from .handlerAlmaDownload import AlmaDownloadHandler
-    __all__.append("AlmaDownloadHandler")
-except ImportError:
-    pass
+    __version__ = version(__name__)
+except PackageNotFoundError:
+    __version__ = "dev"
+
+from .handlerAlmaDownload import AlmaDownloadHandler
+from .handlerDerived import DerivedHandler
+from .handlerKeys import KeyHandler
+from .handlerRelease import ReleaseHandler
+from .phangsLogger import setup_logger
+
+__all__ = [
+    "AlmaDownloadHandler",
+    "KeyHandler",
+    "ReleaseHandler",
+    "setup_logger",
+]
+
+# Modules that require CASA to be installed
+if casa_enabled:
+    from .handlerImagingChunked import ImagingChunkedHandler
+    from .handlerImaging import ImagingHandler
+    from .handlerPostprocess import PostProcessHandler
+    from .handlerSingleDish import SingleDishHandler
+    from .handlerTestImaging import TestImagingHandler
+    from .handlerVis import VisHandler
+
+    __all__.extend([
+        "ImagingChunkedHandler",
+        "ImagingHandler",
+        "PostProcessHandler",
+        "SingleDishHandler",
+        "TestImagingHandler",
+        "VisHandler",
+    ])
+
+# Modules that require spectral-cube to be installed
+if spectral_cube_enabled:
+    __all__.extend(["DerivedHandler"])

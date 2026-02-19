@@ -1,4 +1,4 @@
-# This is a very simple SCRIPT (not a module) that will generate blank
+# This is a very simple script that will generate blank
 # clean input files. These can be used as the basis of clean recipes.
 
 # The main use is to generate a new complete set of default-value

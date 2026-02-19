@@ -38,38 +38,21 @@ Notes:
 
 """
 
-#<DONE># 20200210 dzliu: self._kh._cleanmask_dict is always None. It is not yet implemented in "handlerKeys.py"!
-#<TODO># 20200214 dzliu: will users want to do imaging for individual project instead of concatenated ms?
-#<TODO># 20200214 dzliu: needing KeyHandler API:
-#<DONE># 20200214 dzliu:     self._kh._cleanmask_dict   --> self._kh.get_cleanmask() # input target name, output clean mask file
-#<TODO># 20200214 dzliu:     self._kh._target_dict      --> self._kh.get_target_dict() # for rastring, decstring
-#<TODO># 20200214 dzliu:     self._kh._override_dict    --> self._kh.get_overrides()
-#<TODO># 20200214 dzliu:     self._kh._dir_keys         --> self._kh.get_target_name_for_multipart_name()
-#<TODO># 20200214 dzliu:     self._kh._config_dict['interf_config']['clean_scales_arcsec'] # angular scales
-#<TODO># 20200218 dzliu: CASA 5.4.0 works, but CASA 5.6.0 does not work!! -- now should work.
-#<TODO># 20200218 dzliu: revert does not work! -- copy_imaging suffix bug fixed.
-#<TODO># 20200218 dzliu: need to test 'cont'
-
-import os, sys, re, shutil
-import glob
 import logging
+import os
+
+# Check casa environment by importing CASA-only packages
+from .check_imports import is_casa_installed
+
+casa_enabled = is_casa_installed()
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-# Check casa environment by importing CASA-only packages
-from .casa_check import is_casa_installed
-casa_enabled = is_casa_installed()
-
-
 if casa_enabled:
     logger.debug('casa_enabled = True')
-    from . import casaImagingRoutines as imr
-    from . import casaMaskingRoutines as msr
-    # reload(imr)
-    # reload(msr)
 else:
     logger.debug('casa_enabled = False')
 
@@ -80,11 +63,12 @@ if casa_enabled:
 
     from .clean_call import CleanCall, CleanCallFunctionDecorator
 
-    from . import utilsLines as lines
-    from . import handlerTemplate
-    from . import utilsFilenames
+    from . import casaImagingRoutines as imr
+    from . import casaMaskingRoutines as msr
     from . import casaStuff
-
+    from . import handlerTemplate
+    from . import utilsLines as lines
+    from . import utilsFilenames
 
     class ImagingHandler(handlerTemplate.HandlerTemplate):
         """
@@ -768,7 +752,7 @@ if casa_enabled:
             logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%")
             logger.info("")
 
-            if not self._dry_run and casa_enabled:
+            if not self._dry_run:
                 imr.make_dirty_image(clean_call, imaging_method=imaging_method)
                 if backup:
                     imr.copy_imaging(
@@ -799,7 +783,7 @@ if casa_enabled:
             logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%")
             logger.info("")
 
-            if (not self._dry_run) and casa_enabled:
+            if not self._dry_run:
                 imr.copy_imaging(
                     input_root=clean_call.get_param('imagename') + '_' + tag,
                     output_root=clean_call.get_param('imagename'),
@@ -854,8 +838,6 @@ if casa_enabled:
 
             if self._dry_run:
                 return ()
-            if not casa_enabled:
-                return ()
 
             # Get fname dict
             fname_dict = self._fname_dict(product=product, imagename=clean_call.get_param('imagename'),
@@ -905,8 +887,6 @@ if casa_enabled:
             logger.info("")
 
             if self._dry_run:
-                return ()
-            if not casa_enabled:
                 return ()
 
             imr.clean_loop(clean_call=clean_call,
@@ -991,8 +971,6 @@ if casa_enabled:
             logger.info("")
 
             if self._dry_run:
-                return()
-            if not casa_enabled:
                 return()
 
             # check if line product
@@ -1079,8 +1057,6 @@ if casa_enabled:
 
             if self._dry_run:
                 return ()
-            if not casa_enabled:
-                return ()
 
             imr.clean_loop(clean_call=clean_call,
                            imaging_method=imaging_method,
@@ -1141,7 +1117,7 @@ if casa_enabled:
             logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%")
             logger.info("")
 
-            if not self._dry_run and casa_enabled:
+            if not self._dry_run:
                 imr.export_imaging_to_fits(image_root, imaging_method=imaging_method)
 
             return ()

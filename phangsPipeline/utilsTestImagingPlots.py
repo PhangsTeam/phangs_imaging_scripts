@@ -58,7 +58,7 @@ try:
 except ImportError:
     HAS_ASTROPY = False
 
-from .casa_check import is_casa_installed
+from .check_imports import is_casa_installed
 casa_enabled = is_casa_installed()
 
 if casa_enabled:

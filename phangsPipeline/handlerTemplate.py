@@ -5,11 +5,10 @@ This is a template handler object. It acts as parent to our other
 handlers and includes basic list and shared functionality.
 """
 
-import os
-import glob
+import logging
+
 import numpy as np
 
-import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 

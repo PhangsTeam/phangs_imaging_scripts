@@ -1,7 +1,7 @@
 # This is the line list.
 
-import re
 import logging
+import re
 
 import numpy as np
 

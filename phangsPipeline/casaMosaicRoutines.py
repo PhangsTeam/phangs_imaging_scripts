@@ -2,35 +2,19 @@
 Standalone routines related to linear mosaicking of multi-part mosaics
 in CASA.
 """
-#region Imports and definitions
 
 import copy
-import os
-import glob
 import logging
+import os
 
-import numpy as np
-try:
-    import pyfits  # CASA has pyfits, not astropy
-except ImportError:
-    import astropy.io.fits as pyfits
-
-# Analysis utilities
 import analysisUtils as au
+import numpy as np
 
-# Pipeline versionining
-from .pipelineVersion import version as pipeVer
-
-# CASA stuff
-from . import casaStuff
-
-# Other pipeline stuff
 from . import casaMaskingRoutines as cma
+from . import casaStuff
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-#endregion
 
 #region Routines to match resolution
 

@@ -17,29 +17,16 @@ Example:
     this_hr.set_targets(only=['ngc4321'])
 """
 
-import os, sys, re, shutil
-import glob
 import logging
+import os
+import shutil
 
-import numpy as np
+from . import handlerTemplate
+from . import utilsFilenames
+from . import utilsResolutions
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-# Check casa environment by importing CASA-only packages
-from .casa_check import is_casa_installed
-casa_enabled = is_casa_installed()
-
-
-if casa_enabled:
-    logger.debug('casa_enabled = True')
-else:
-    logger.debug('casa_enabled = False')
-
-from . import utilsResolutions
-from . import utilsFilenames
-from . import utilsLines
-from . import handlerTemplate
 
 
 class ReleaseHandler(handlerTemplate.HandlerTemplate):

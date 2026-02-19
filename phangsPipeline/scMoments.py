@@ -2,8 +2,8 @@ import inspect
 import logging
 import warnings
 
-import numpy as np
 import astropy.units as u
+import numpy as np
 from spectral_cube import SpectralCube
 
 from . import scDerivativeRoutines as scdr

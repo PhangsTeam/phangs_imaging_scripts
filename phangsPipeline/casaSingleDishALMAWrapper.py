@@ -1,23 +1,20 @@
-
-
-import os
 import glob
-import tarfile
+import logging
+import os
 import shutil
-import numpy as np
-
-from astropy.table import Table
+import tarfile
 
 import analysisUtils as au
-
-import logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+import astropy.units as u
+import numpy as np
+from astropy.table import Table
 
 from . import casaLegacySingleDishRoutines as csdr
 from . import casaStuff
 from .utilsSingleDish import getTPSampling
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 # path constants
 path_calibration = '../calibration/'
@@ -249,7 +246,6 @@ def runALMAPipeline(path_galaxy,
 
     # Create baseline dict with freq ranges to mask:
     if baseline_linewindow is None:
-        import astropy.units as u
 
         # Construct the line window via spw:low~high strings based on the
         # product_dict.

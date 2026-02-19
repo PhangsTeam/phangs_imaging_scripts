@@ -1,5 +1,7 @@
 import glob
 
+import analysisUtils as au
+
 fname_list = [
     'ic5332_7m_co21.ms',
     'ic5332_12m_co21.ms',

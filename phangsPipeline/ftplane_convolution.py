@@ -1,10 +1,12 @@
-from spectral_cube import SpectralCube, VaryingResolutionSpectralCube
-from radio_beam import Beam
-import numpy as np
-import astropy.units as u
-import astropy.utils.console as console
 import copy
 import warnings
+
+import astropy.units as u
+import astropy.utils.console as console
+import numpy as np
+from radio_beam import Beam
+from spectral_cube import SpectralCube, VaryingResolutionSpectralCube
+
 
 def ftconvolve(ImageIn, major = 1.0, minor = 1.0,
                angle = 0.0):

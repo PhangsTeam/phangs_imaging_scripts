@@ -3,40 +3,19 @@ Stand alone routines to carry out basic noise estimation, masking, and
 mask manipulation steps in CASA.
 """
 
-#
-# 20200210 dzliu: moved "stat_clean_cube()" to here, as it is required by "signal_mask()"
-# 20200210 dzliu: changed "casa." to "casaStuff.", as "casa" is a dict used by CASA itself.
-# 20200210 dzliu: changed "print +(.*)$" to "logger.info(\1)"
-#
-
-# region Imports and definitions
-
-import os
-import glob
 import logging
+import os
 
+import analysisUtils as au
 import numpy as np
 import scipy.ndimage as ndimage
+from astropy.io import fits
 from scipy.special import erfc
 
-try:
-    import pyfits  # CASA has pyfits, not astropy
-except ImportError:
-    import astropy.io.fits as pyfits
-
-# Analysis utilities
-import analysisUtils as au
-
-# Pipeline versionining
-from .pipelineVersion import version as pipeVer
-
-# CASA stuff
 from . import casaStuff
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-# endregion
 
 # region Noise estimation
 
@@ -237,7 +216,7 @@ def read_cube(infile, huge_cube_workaround=True):
         casaStuff.exportfits(imagename=infile,
                              fitsimage=infile + '.fits',
                              stokeslast=False, overwrite=True)
-        hdu = pyfits.open(infile + '.fits')[0]
+        hdu = fits.open(infile + '.fits')[0]
         cube = hdu.data.T
 
         # Remove intermediate fits file
@@ -263,7 +242,7 @@ def write_mask(infile, outfile, mask, huge_cube_workaround=True):
         casaStuff.exportfits(imagename=outfile,
                              fitsimage=outfile + '.fits',
                              stokeslast=False, overwrite=True)
-        hdu = pyfits.open(outfile + '.fits')[0]
+        hdu = fits.open(outfile + '.fits')[0]
         hdu.data = mask.T
         hdu.header['BITPIX'] = -32
 
@@ -275,11 +254,7 @@ def write_mask(infile, outfile, mask, huge_cube_workaround=True):
         for wcs_name in wcs_names:
             hdu.header[wcs_name.upper()] = header[wcs_name]
 
-        # Variations between pyfits and astropy
-        try:
-            hdu.writeto(outfile + '.fits', clobber=True)
-        except TypeError:
-            hdu.writeto(outfile + '.fits', overwrite=True)
+        hdu.writeto(outfile + '.fits', overwrite=True)
 
         casaStuff.importfits(fitsimage=outfile + '.fits',
                              imagename=outfile,
