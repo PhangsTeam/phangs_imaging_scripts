@@ -69,7 +69,7 @@ exclude = [
 
 [build-system]
 requires = [
-    "setuptools >= 80.9.0",
+    "setuptools >= 82.0.1",
     "setuptools_scm >= 9.2.2",
     "wheel >= 0.45.1",
 ]
