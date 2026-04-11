@@ -47,7 +47,7 @@ dependencies = [
 [project.optional-dependencies]
 casa = [
     "casadata >= 2025.9.22",
-    "casaplotms >= 2.7.4",
+    "casaplotms >= 2.8.2",
     "casarecipes >= 0.4.0",
     "casashell >= 6.7.3.21",
     "casatasks >= 6.7.3.21",
