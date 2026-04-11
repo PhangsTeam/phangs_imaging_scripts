@@ -37,7 +37,7 @@ dependencies = [
     "astropy >= 7.2.0",
     "astroquery >= 0.4.11",
     "numpy >= 2.3.5",
-    "protobuf == 3.20",
+    "protobuf == 7.34.1",
     "pytz >= 2025.2",
     "scipy >= 1.16.3",
     "spectral-cube >= 0.6.7",
