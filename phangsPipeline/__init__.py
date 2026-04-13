@@ -12,7 +12,6 @@ except ImportError:
     __version__ = "dev"
 
 from .handlerAlmaDownload import AlmaDownloadHandler
-from .handlerDerived import DerivedHandler
 from .handlerKeys import KeyHandler
 from .handlerRelease import ReleaseHandler
 from .phangsLogger import setup_logger
@@ -44,4 +43,7 @@ if casa_enabled:
 
 # Modules that require spectral-cube to be installed
 if spectral_cube_enabled:
-    __all__.extend(["DerivedHandler"])
+    from .handlerDerived import DerivedHandler
+    __all__.extend([
+        "DerivedHandler",
+    ])

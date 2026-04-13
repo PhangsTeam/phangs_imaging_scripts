@@ -1,0 +1,44 @@
+name: Run tests
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - '*'
+  pull_request:
+  schedule:
+      # run every Tuesday at 5am UTC
+      - cron: '0 5 * * 2'
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [
+          ubuntu-latest,
+          macos-latest,
+        ]
+        python-version: [
+          '3.12',
+        ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+      - name: Install tox
+        run: |
+          uv tool install --python ${{ matrix.python-version }} tox --with tox-gh
+      - name: Run tests
+        run: tox
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          report_type: "test_results"
+          token: ${{ secrets.CODECOV_TOKEN }}

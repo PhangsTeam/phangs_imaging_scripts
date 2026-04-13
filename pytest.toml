@@ -1,0 +1,13 @@
+[pytest]
+minversion = "9.0"
+addopts = [
+    "-ra",
+    "-q",
+    "--strict-markers",
+]
+markers = [
+    "casa: marks tests as requiring CASA install (deselect with '-m \"not casa\"')",
+]
+testpaths = [
+    "tests",
+]
