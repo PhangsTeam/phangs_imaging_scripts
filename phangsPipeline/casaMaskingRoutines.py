@@ -164,22 +164,103 @@ def noise_for_cube(
 
     myia = au.createCasaTool(casaStuff.iatool)
     myia.open(infile)
-    data = myia.getchunk()
-    mask = myia.getchunk(getmask=True)
-    myia.close()
 
-    if maskfile is not None:
-        myia.open(maskfile)
-        user_mask = myia.getchunk()
-        user_mask_mask = myia.getchunk(getmask=True)
+    has_memory_issue, cube_shape = ccr.check_getchunk_putchunk_memory_issue(
+        infile, myia=myia, return_shape=True)
+
+    if not has_memory_issue:
+        data = myia.getchunk()
+        mask = myia.getchunk(getmask=True)
         myia.close()
-        if exclude_mask:
-            mask = mask * user_mask_mask * (user_mask < 0.5)
-        else:
-            mask = mask * user_mask_mask * (user_mask >= 0.5)
 
-    this_noise = estimate_noise(
-        data=data, mask=mask, method=method, niter=niter)
+        if maskfile is not None:
+            myia.open(maskfile)
+            user_mask = myia.getchunk()
+            user_mask_mask = myia.getchunk(getmask=True)
+            myia.close()
+            if exclude_mask:
+                mask = mask * user_mask_mask * (user_mask < 0.5)
+            else:
+                mask = mask * user_mask_mask * (user_mask >= 0.5)
+
+        this_noise = estimate_noise(
+            data=data, mask=mask, method=method, niter=niter)
+
+    else:
+        logger.debug('getchunk channel by channel for known memory issue')
+
+        myia_mask = None
+        if maskfile is not None:
+            myia_mask = au.createCasaTool(casaStuff.iatool)
+            myia_mask.open(maskfile)
+
+        per_channel_noise = []
+
+        if len(cube_shape) == 2:
+            blc = [0, 0]
+            trc = [-1, -1]
+            data_slice = myia.getchunk(blc, trc)
+            mask_slice = myia.getchunk(blc, trc, getmask=True)
+            if myia_mask is not None:
+                user_mask_slice = myia_mask.getchunk(blc, trc)
+                user_mask_mask_slice = myia_mask.getchunk(blc, trc, getmask=True)
+                if exclude_mask:
+                    mask_slice = mask_slice * user_mask_mask_slice * (user_mask_slice < 0.5)
+                else:
+                    mask_slice = mask_slice * user_mask_mask_slice * (user_mask_slice >= 0.5)
+            chan_noise = estimate_noise(data=data_slice, mask=mask_slice, method=method, niter=niter)
+            if np.isfinite(chan_noise):
+                per_channel_noise.append(chan_noise)
+
+        elif len(cube_shape) == 3:
+            for ichan in range(cube_shape[2]):
+                blc = [0, 0, ichan]
+                trc = [-1, -1, ichan]
+                data_slice = myia.getchunk(blc, trc)
+                mask_slice = myia.getchunk(blc, trc, getmask=True)
+                if myia_mask is not None:
+                    user_mask_slice = myia_mask.getchunk(blc, trc)
+                    user_mask_mask_slice = myia_mask.getchunk(blc, trc, getmask=True)
+                    if exclude_mask:
+                        mask_slice = mask_slice * user_mask_mask_slice * (user_mask_slice < 0.5)
+                    else:
+                        mask_slice = mask_slice * user_mask_mask_slice * (user_mask_slice >= 0.5)
+                chan_noise = estimate_noise(data=data_slice, mask=mask_slice, method=method, niter=niter)
+                if np.isfinite(chan_noise):
+                    per_channel_noise.append(chan_noise)
+
+        elif len(cube_shape) == 4:
+            for istokes in range(cube_shape[3]):
+                for ichan in range(cube_shape[2]):
+                    blc = [0, 0, ichan, istokes]
+                    trc = [-1, -1, ichan, istokes]
+                    data_slice = myia.getchunk(blc, trc)
+                    mask_slice = myia.getchunk(blc, trc, getmask=True)
+                    if myia_mask is not None:
+                        user_mask_slice = myia_mask.getchunk(blc, trc)
+                        user_mask_mask_slice = myia_mask.getchunk(blc, trc, getmask=True)
+                        if exclude_mask:
+                            mask_slice = mask_slice * user_mask_mask_slice * (user_mask_slice < 0.5)
+                        else:
+                            mask_slice = mask_slice * user_mask_mask_slice * (user_mask_slice >= 0.5)
+                        chan_noise = estimate_noise(data=data_slice, mask=mask_slice, method=method, niter=niter)
+                    if np.isfinite(chan_noise):
+                        per_channel_noise.append(chan_noise)
+
+        else:
+            myia.close()
+            if myia_mask is not None:
+                myia_mask.close()
+            raise Exception('Could not proceed with cube dimension ' + str(len(cube_shape)))
+
+        myia.close()
+        if myia_mask is not None:
+            myia_mask.close()
+
+        if len(per_channel_noise) == 0:
+            this_noise = np.nan
+        else:
+            this_noise = float(np.nanmedian(per_channel_noise))
 
     if np.isnan(this_noise):
         raise Exception("Returned nan for noise: {}".format(this_noise))
