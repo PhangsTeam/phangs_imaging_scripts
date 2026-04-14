@@ -7,8 +7,8 @@ casa_enabled = is_casa_installed()
 spectral_cube_enabled = is_spectral_cube_installed()
 
 try:
-    __version__ = version(__name__)
-except PackageNotFoundError:
+    from .version import version as __version__
+except ImportError:
     __version__ = "dev"
 
 from .handlerAlmaDownload import AlmaDownloadHandler

@@ -1,7 +1,8 @@
 [project]
 
 name = "phangsPipeline"
-version = "4.0.0"
+# version = "4.0.0"
+dynamic = ["version"]
 description = "PHANGS-ALMA Pipeline"
 readme = "README.md"
 requires-python = ">=3.12, <3.13"
@@ -75,3 +76,7 @@ requires = [
 ]
 
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+# Configure custom options here (version schemes, file writing, etc.)
+version_file = "phangsPipeline/version.py"
