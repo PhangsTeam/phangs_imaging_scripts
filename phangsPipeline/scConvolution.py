@@ -39,7 +39,7 @@ def smooth_cube(
         coverage2dfile=None,
         dtype=np.float32,
         overwrite=True, 
-        process_channelwise=False
+        huge_cube=False
     ):
     """
     Smooth an input cube to coarser angular or spectral
@@ -144,7 +144,7 @@ def smooth_cube(
             logger.info("... proceeding with convolution.")
             
             # Channel-wise processing for large cubes
-            if process_channelwise and not twod:
+            if huge_cube and not twod:
                 logger.info("... processing channel-by-channel")
                 
                 # Create output arrays
@@ -213,23 +213,13 @@ def smooth_cube(
 
             else:
                 # Original approach for smaller cubes
-                if twod:
-                    cube = cube.convolve_to(target_beam,
-                                            nan_treatment=nan_treatment,
-                                            allow_huge=True)
-                else: 
-                    cube = cube.convolve_to(target_beam,
-                                            nan_treatment=nan_treatment, 
-                                            allow_huge=True)
+                cube = cube.convolve_to(target_beam,
+                                        nan_treatment=nan_treatment,
+                                        allow_huge=True)
                 if make_coverage_cube:
-                    if twod:
-                        coverage = coverage.convolve_to(target_beam,
-                                                        nan_treatment=nan_treatment,
-                                                        allow_huge=True)
-                    else:
-                        coverage = coverage.convolve_to(target_beam,
-                                                        nan_treatment=nan_treatment, 
-                                                        allow_huge=True)
+                    coverage = coverage.convolve_to(target_beam,
+                                                    nan_treatment=nan_treatment,
+                                                    allow_huge=True)
 
         if np.abs(delta) < tol:
             logger.info("... current resolution meets tolerance.")

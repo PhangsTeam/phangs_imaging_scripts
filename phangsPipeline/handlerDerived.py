@@ -713,7 +713,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                                 make_coverage_cube=True, coveragefile=outdir + coveragefile,
                                 collapse_coverage=True, coverage2dfile=outdir + coverage2dfile,
                                 overwrite=overwrite, 
-                                process_channelwise=huge_cube)
+                                huge_cube=huge_cube)
 
                 if res_type == 'phys':
                     this_distance = self._kh.get_distance_for_target(target)
@@ -728,7 +728,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                                 make_coverage_cube=True, coveragefile=outdir + coveragefile,
                                 collapse_coverage=True,
                                 overwrite=overwrite, 
-                                process_channelwise=huge_cube)
+                                huge_cube=huge_cube)
 
         return ()
 

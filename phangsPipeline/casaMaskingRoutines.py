@@ -13,6 +13,7 @@ from astropy.io import fits
 from scipy.special import erfc
 
 from . import casaStuff
+from . import casaCubeRoutines as ccr
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -243,7 +244,7 @@ def noise_for_cube(
                             mask_slice = mask_slice * user_mask_mask_slice * (user_mask_slice < 0.5)
                         else:
                             mask_slice = mask_slice * user_mask_mask_slice * (user_mask_slice >= 0.5)
-                        chan_noise = estimate_noise(data=data_slice, mask=mask_slice, method=method, niter=niter)
+                    chan_noise = estimate_noise(data=data_slice, mask=mask_slice, method=method, niter=niter)
                     if np.isfinite(chan_noise):
                         per_channel_noise.append(chan_noise)
 
