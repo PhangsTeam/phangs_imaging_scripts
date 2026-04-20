@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Action to automatically add Dependabot updates to changelog (#330)
+- ``requires`` keywords in ``config_definitions``, deprecating ``strict_config`` for more per-config control (#329).
+- Action to automatically add Dependabot updates to changelog (#330).
 - Initial test suite, which checks the various CASA tasks and arguments used throughout the pipeline (#324).
 - Initial pip-installable version (#292).
 - Added more detailed instructions for installing analysisUtils (#340).
