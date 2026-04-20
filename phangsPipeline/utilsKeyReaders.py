@@ -734,6 +734,7 @@ def read_config_key(fname='', existing_dict=None, delim=None):
         if this_type == "interf_config":
             expected_params = {
                 'array_tags': [],
+                'requires': [],
                 'res_min_arcsec': 0.0,
                 'res_max_arcsec': 0.0,
                 'res_min_pc': 0.0,
