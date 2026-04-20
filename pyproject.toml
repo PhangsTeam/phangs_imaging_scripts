@@ -57,6 +57,17 @@ casa = [
     "pipeline@git+https://open-bitbucket.nrao.edu/scm/pipe/pipeline.git",
 ]
 
+# Optional packages for the test suite
+test = [
+    "pytest-cov >= 7.1.0",
+]
+test-casa = [
+    "zenodo-get >= 3.0.0",
+]
+test-ruff = [
+    "ruff >= 0.15.10",
+]
+
 [project.urls]
 "Homepage" = "https://github.com/phangsTeam/phangs_imaging_scripts"
 "Bug Reports" = "https://github.com/phangsTeam/phangs_imaging_scripts/issues"
@@ -66,6 +77,25 @@ casa = [
 exclude = [
     "phangs-alma_keys/*",
     "scripts/*",
+]
+
+# Omit in coverage. Notably here, we exclude
+# the CASA analysisutils
+[tool.coverage.run]
+omit = [
+    "docs/*",
+    "phangs-alma_keys/*",
+    "tests/*",
+    "*/analysis_scripts/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    'except ImportError',
+    'except ModuleNotFoundError',
+    'except \(ImportError, ModuleNotFoundError\)',
+    'raise AssertionError',
+    'raise NotImplementedError',
 ]
 
 [build-system]

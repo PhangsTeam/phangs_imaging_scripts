@@ -3,10 +3,11 @@ name: Build
 on:
   push:
     branches:
+      - master
+    tags:
       - '*'
   pull_request:
-    branches:
-      - master
+  workflow_dispatch:
 
 jobs:
   job:
@@ -14,9 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # Versions listed at https://raw.githubusercontent.com/actions/python-versions/main/versions-manifest.json
         python-version: [
-          "3.12",
+          '3.12',
         ]
     steps:
       - uses: actions/checkout@v6

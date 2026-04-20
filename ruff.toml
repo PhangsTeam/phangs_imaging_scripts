@@ -1,0 +1,33 @@
+extend = "pyproject.toml"
+
+extend-exclude = [
+    ".github",
+    ".tmp",
+    "phangs-alma_keys",
+    "phangsPipelineTests",
+    "scripts",
+    "tests/casa_config_files/*",
+    "run_pipeline_phangs-alma.py",
+]
+
+line-length = 100
+
+target-version = "py312"
+
+[format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[lint.pydocstyle]
+convention = "numpy"
+
+[lint.per-file-ignores]
+"phangsPipeline/__init__.py" = [
+    "E402", # module-level import not at top of file
+    "F401", # unused import
+]
+
+"tests/test_*_imports.py" = [
+    "F401", # unused import
+]
