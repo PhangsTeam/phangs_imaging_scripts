@@ -88,23 +88,37 @@ if casa_enabled:
                 intent=None,
                 timebin=None,
                 just_projects=None,
-                strict_config=True,
                 require_full_line_coverage=False,
                 require_full_cont_coverage=False,
-                overwrite=False):
+                overwrite=False,
+                strict_config=None,
+        ):
             """
             Loops over the full set of targets, products, and configurations
             to run the uv data processing. Toggle the parts of the loop
             using the do_XXX booleans. Other choices affect the algorithms
             used.
 
-            The strict_config option sets whether to require that a target has data
-            from ALL arrays that make up the configuration (True) or not (False).
+            This strict_config option has now been deprecated in favour of
+            more granular control. Use the 'requires' keyword in the
+            config_definitions file instead. By default, we require ALL
+            arrays that make up the configuration, but this can be changed
+            to an OR if you only need one of a certain combination, e.g.
+
+                interf_config   	  12m       {'array_tags':['12m_1','12m_2']}
+                interf_config   	  12m       {'requires':['12m_1|12m_2']}
+
+            requires only one of 12m_1 or 12m_2 to be present. If an array is not
+            in the 'requires' list, then it is assumed to be required.
 
             The require_full_line_coverage option sets whether to require a
             measurement set to completely cover a given line's frequency range
             (True) or not (False).
             """
+
+            if strict_config is not None:
+                raise DeprecationWarning("strict_config has been deprectated. "
+                                         "Use 'requires' in config_definitions instead.")
 
             if make_directories:
                 self._kh.make_missing_directories(imaging=True)
@@ -131,7 +145,7 @@ if casa_enabled:
                         target=target_list,
                         config=config_list,
                         project=just_projects,
-                        strict_config=strict_config):
+                    ):
 
                 for this_product in product_list:
 
@@ -185,16 +199,6 @@ if casa_enabled:
                         just_line=True,
                         just_interf=True):
 
-                if strict_config:
-                    # this seems like it doesn't do anything - do we
-                    # actually want a test here and if we do shouldn't
-                    # it be checking if this is false then
-                    # continuing? In theory this is checked above.
-                    self._kh.has_data_for_config(
-                        target=this_target,
-                        config=this_config,
-                        strict=True)
-
                 if do_extract_line:
 
                     if this_product in self._kh.get_line_products():
@@ -209,7 +213,7 @@ if casa_enabled:
                             # could add algorithm flags here
                             require_full_line_coverage=require_full_line_coverage,
                             overwrite=overwrite,
-                            strict_config=strict_config)
+                        )
 
             for this_target, this_product, this_config in \
                     self.looper(
@@ -218,13 +222,6 @@ if casa_enabled:
                         do_configs=True,
                         just_cont=True,
                         just_interf=True):
-
-                # Same as above - check / revise
-                if strict_config:
-                    self._kh.has_data_for_config(
-                        target=this_target,
-                        config=this_config,
-                        strict=True)
 
                 if do_extract_cont:
 
@@ -237,7 +234,7 @@ if casa_enabled:
                             do_statwt=statwt_cont,
                             require_full_cont_coverage=require_full_cont_coverage,
                             overwrite=overwrite,
-                            strict_config=strict_config)
+                        )
 
             # Clean up the staged measurement sets. They cost time to
             # re-split, but have a huge disk imprint and are redundant
@@ -248,7 +245,7 @@ if casa_enabled:
                         target=target_list,
                         config=config_list,
                         project=just_projects,
-                        strict_config=strict_config):
+                    ):
 
                 for this_product in product_list:
 
@@ -259,7 +256,7 @@ if casa_enabled:
                             array_tag=this_array_tag,
                             obsnum=this_obsnum,
                             product=this_product,
-                            strict_config=strict_config)
+                        )
 
             return ()
 
@@ -424,7 +421,7 @@ if casa_enabled:
                 obsnum=None,
                 product=None,
                 extra_ext='',
-                strict_config=True):
+        ):
             """
             Remove 'staged' visibility products, which are intermediate
             between the calibrated data and the concated measurement sets
@@ -477,7 +474,7 @@ if casa_enabled:
                 extra_ext_in='',
                 extra_ext_out='',
                 overwrite=False,
-                strict_config=True):
+        ):
             """
             Concatenate all measurement sets for the supplied
             target+config+product combination.
@@ -507,7 +504,7 @@ if casa_enabled:
                         target=target,
                         config=config,
                         project=just_projects,
-                        strict_config=strict_config):
+                    ):
 
                 this_staged_ms = fnames.get_staged_msname(
                     target=this_target, project=this_project,
@@ -718,7 +715,7 @@ if casa_enabled:
                 method="regrid_then_rebin",
                 require_full_line_coverage=False,
                 overwrite=False,
-                strict_config=True):
+        ):
             """
             Extract spectral line data from ms data for the input target,
             config and product.
@@ -771,7 +768,7 @@ if casa_enabled:
                     self._kh.loop_over_input_ms(target=[target],
                                                 config=[config],
                                                 project=None,
-                                                strict_config=strict_config):
+                                                ):
 
                 # The name of the staged measurement set with this
                 # combination of target, project, array, obsnum.
@@ -918,7 +915,7 @@ if casa_enabled:
                 method="regrid_then_rebin",
                 require_full_cont_coverage=False,
                 overwrite=False,
-                strict_config=True):
+        ):
             """
             Extract continuum data from ms data for the input target, config,
             and product.
@@ -953,7 +950,7 @@ if casa_enabled:
                     self._kh.loop_over_input_ms(target=[target],
                                                 config=[config],
                                                 project=None,
-                                                strict_config=strict_config):
+                                                ):
                 # The name of the staged measurement set with this
                 # combination of target, project, array, obsnum.
 

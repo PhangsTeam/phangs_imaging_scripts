@@ -3,8 +3,8 @@ Parts of the PHANGS pipeline that handle the targets, data files,
 etc. This is the program that navigates the galaxy list, directory
 structure, etc. This part is pure python.
 """
-
 import ast
+import copy
 import logging
 import os
 
@@ -2087,6 +2087,23 @@ class KeyHandler:
 
         return None
 
+    def get_require_tags_for_config(self,
+                                    config=None,
+                                    ):
+        """
+        Get the list of required array tags associated with an interferometric configuration.
+        """
+        if config is None:
+            logging.error("Please specify a config.")
+            return None
+
+        if 'interf_config' in self._config_dict:
+            if config in self._config_dict['interf_config']:
+                if 'requires' in self._config_dict['interf_config'][config]:
+                    return self._config_dict['interf_config'][config]['requires']
+
+        return []
+
     def get_timebin_for_array_tag(self, array_tag=None):
         """
         Get the timebin for an array tag. Returns 0s by default.
@@ -2137,10 +2154,9 @@ class KeyHandler:
             config=None,
             project=None,
             check_linmos=False,
-            strict_config=True,
     ):
         """
-        Loop over the the target name, project tag, array tag, and
+        Loop over the target name, project tag, array tag, and
         obsnum for each input visibility file. If a target is supplied
         then restrict to that target, trying to match to a linear
         mosaic if the target is not represented in the dictionary. If
@@ -2148,11 +2164,16 @@ class KeyHandler:
         contribute to that configuration.
 
         Note that the interaction with configs that contain multiple
-        arrays is tricky. By default, if "strict_config" is TRUE, it
-        will only loop over targets that have data from ALL arrays in
-        the configuration. For example to be included in a "12m+7m"
-        configuration you need both "12m" AND "7m" data. Set
-        strict_config to FALSE to adjust this behaviour.
+        arrays is tricky. Use the 'requires' keyword in the
+        config_definitions file to control this. By default, we require ALL
+        arrays that make up the configuration, but this can be changed
+        to an OR if you only need one of a certain combination, e.g.
+
+            interf_config   	  12m       {'array_tags':['12m_1','12m_2']}
+            interf_config   	  12m       {'requires':['12m_1|12m_2']}
+
+        requires only one of 12m_1 or 12m_2 to be present. If an array is not
+        in the 'requires' list, then it is assumed to be required.
         """
 
         # if user has input a target or target list, match to it
@@ -2224,43 +2245,40 @@ class KeyHandler:
                 if not (this_target in just_targets):
                     continue
 
-            # If we're being strict, only consider targets that have
-            # data associated with the user-supplied configs.
+            # This list holds the valid array tags for this target.
+            valid_arraytags = []
 
-            if strict_config:
+            # This mode only works with a user-supplied list of
+            # configs. Else we loop over all measurement sets.
+            if config is not None:
+                if type(config) == type(''):
+                    input_configs = [config]
+                elif type(config) == type([]):
+                    input_configs = config
+                else:
+                    logger.error("Expected list or string.")
+                    raise Exception("Expected list or string.")
 
-                # This list holds the valid array tags for this target.
+                has_data_for_any_config = False
 
-                valid_arraytags = []
+                # Check if the target has data for that configuration
+                for this_config in input_configs:
 
-                # This mode only works with a user-supplied list of
-                # configs. Else we loop over all measurement sets.
+                    if self.has_data_for_config(target=this_target, config=this_config):
+                        has_data_for_any_config = True
 
-                if config is not None:
-                    if type(config) == type(''):
-                        input_configs = [config]
-                    elif type(config) == type([]):
-                        input_configs = config
-                    else:
-                        logger.error("Expected list or string.")
-                        raise Exception("Expected list or string.")
+                        # Note the array tags in this, known to be valid, configuration
+                        this_arraytags = self.get_array_tags_for_config(this_config)
+                        if not isinstance(this_arraytags, list):
+                            raise TypeError("Expected list of array tags.")
 
-                    has_data_for_any_config = False
+                        for this_arraytag in this_arraytags:
+                            if valid_arraytags.count(this_arraytag) == 0:
+                                valid_arraytags.append(this_arraytag)
 
-                    # Check if the target has data for that configuration
-                    for this_config in input_configs:
-
-                        if self.has_data_for_config(target=this_target, config=this_config, strict=True):
-                            has_data_for_any_config = True
-
-                            # Note the array tags in this, known to be valid, configuration
-                            for this_arraytag in self.get_array_tags_for_config(this_config):
-                                if valid_arraytags.count(this_arraytag) == 0:
-                                    valid_arraytags.append(this_arraytag)
-
-                    # If there are no valid configurations skip.
-                    if not has_data_for_any_config:
-                        continue
+                # If there are no valid configurations skip.
+                if not has_data_for_any_config:
+                    continue
 
             # loop over projects
             project_list = list(self._ms_dict[this_target].keys())
@@ -2280,12 +2298,11 @@ class KeyHandler:
                         if not (this_arraytag in just_arraytags):
                             continue
 
-                    if strict_config and config is not None:
+                    if config is not None:
                         if valid_arraytags.count(this_arraytag) == 0:
                             continue
 
                     # loop over obs nums
-
                     obsnum_list = list(self._ms_dict[this_target][this_project][this_arraytag].keys())
                     obsnum_list.sort()
                     for this_obsnum in obsnum_list:
@@ -2363,7 +2380,6 @@ class KeyHandler:
             self,
             target=None,
             config=None,
-            strict=True,
     ):
         """
         Test whether a target has data for a configuration in the ms
@@ -2379,6 +2395,39 @@ class KeyHandler:
             return None
 
         config_array_tags = self.get_array_tags_for_config(config)
+        if not isinstance(config_array_tags, list):
+            raise TypeError("Expected list of array tags.")
+
+        config_require_tags = self.get_require_tags_for_config(config)
+        if not isinstance(config_require_tags, list):
+            raise TypeError("Expected list of require tags.")
+
+        # Combine these into a list of (potentially) lists
+        final_config_array_tags = []
+        for config_array_tag in config_array_tags:
+
+            found_in_require = False
+
+            for config_require_tag in config_require_tags:
+
+                # Split these at the pipe, and see if the current
+                # array tag is already in the list
+                crt_split = config_require_tag.split('|')
+                if config_array_tag in crt_split:
+
+                    found_in_require = True
+
+                    # If we don't already have this in the list,
+                    # then append
+                    if crt_split not in final_config_array_tags:
+                        final_config_array_tags.append(crt_split)
+
+            # If we haven't found a match, then append the original
+            # array tag (as a single-entry list)
+            if not found_in_require:
+                final_config_array_tags.append([config_array_tag])
+
+        config_array_tags = copy.deepcopy(final_config_array_tags)
 
         arraytags_for_target = []
 
@@ -2392,7 +2441,6 @@ class KeyHandler:
                 for this_arraytag in self._ms_dict[this_target][this_project].keys():
                     arraytags_for_target.append(this_arraytag)
 
-        has_any = False
         missing_any = False
 
         for this_config_arraytag in config_array_tags:
@@ -2401,25 +2449,17 @@ class KeyHandler:
 
             for this_target_arraytag in arraytags_for_target:
 
-                if this_config_arraytag == this_target_arraytag:
+                if this_target_arraytag in this_config_arraytag:
                     missing_this_one = False
-                    has_any = True
 
             if missing_this_one:
                 missing_any = True
 
-        if strict:
-            if missing_any:
-                return False
-            else:
-                return True
-        else:
-            if has_any:
-                return True
-            else:
-                return False
+        # If we don't match everything, return a false
+        if missing_any:
+            return False
 
-        return False
+        return True
 
     def get_field_for_input_ms(
             self,

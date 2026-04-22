@@ -1,6 +1,7 @@
 4.0.0 (Unreleased)
 ==================
 
+- Adds ``requires`` keywords in ``config_definitions``, deprecating ``strict_config`` for more per-config control (#329)
 - Added initial test suite, which checks the various CASA tasks and arguments used throughout the pipeline (#324)
 - Bump actions/upload-artifact from 6 to 7 (#313)
 - Bump casaplotms requirement from >=2.7.4 to >=2.8.2 (#320)
