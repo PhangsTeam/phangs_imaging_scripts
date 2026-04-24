@@ -12,6 +12,7 @@ import numpy as np
 
 from . import casaMaskingRoutines as cma
 from . import casaStuff
+from . import casaCubeRoutines as ccr
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -766,13 +767,15 @@ def generate_weight_file(
             return(None)
         os.system('rm -rf '+outfile)
 
-    # Copy the template and read the data into memory
-
+    # Copy the template and open it
     os.system("cp -r "+template+" "+outfile)
 
     myia = au.createCasaTool(casaStuff.iatool)
     myia.open(outfile)
-    data = myia.getchunk()
+
+    # Check for memory issues
+    has_memory_issue, cube_shape = ccr.check_getchunk_putchunk_memory_issue(
+        outfile, myia=myia, return_shape=True)
 
     # Case 1 : We just have an input value.
 
@@ -785,34 +788,122 @@ def generate_weight_file(
         if input_type == 'weight':
             weight_value = input_value
 
-        weight_image = data*0.0 + weight_value
+        # Apply scaling
+        if scale_by_factor is not None:
+            weight_value *= scale_by_factor
+        if scale_by_noise:
+            weight_value /= (noise_value**2)
+
+        # Write weight value (channel-by-channel if needed)
+        if not has_memory_issue:
+            data = myia.getchunk()
+            weight_image = data*0.0 + weight_value
+            myia.putchunk(weight_image)
+        else:
+            logger.debug('putchunk channel by channel for known memory issue')
+            if len(cube_shape) == 2:
+                blc = [0, 0] # [X, Y]
+                trc = [-1, -1] # [X, Y]
+                data_slice = myia.getchunk(blc, trc)
+                weight_slice = data_slice*0.0 + weight_value
+                myia.putchunk(weight_slice, blc)
+            elif len(cube_shape) == 3:
+                for ichan in range(cube_shape[2]):
+                    blc = [0, 0, ichan]
+                    trc = [-1, -1, ichan]
+                    data_slice = myia.getchunk(blc, trc)
+                    weight_slice = data_slice*0.0 + weight_value
+                    myia.putchunk(weight_slice, blc)
+            elif len(cube_shape) == 4:
+                for istokes in range(cube_shape[3]):
+                    for ichan in range(cube_shape[2]):
+                        blc = [0, 0, ichan, istokes]
+                        trc = [-1, -1, ichan, istokes]
+                        data_slice = myia.getchunk(blc, trc)
+                        weight_slice = data_slice*0.0 + weight_value
+                        myia.putchunk(weight_slice, blc)
 
     # Case 2 : We have an input image. Read in the data and manipulate
     # it into a weight array.
 
     if input_file is not None:
+        
+        if not has_memory_issue:
+            data = myia.getchunk()
+            
+            if input_type == 'noise':
+                weight_image = 1./data**2
+            if input_type == 'pb':
+                weight_image = data**2
+            if input_type == 'weight':
+                weight_image = data
+            
+            # Apply scaling
+            if scale_by_factor is not None:
+                weight_image *= scale_by_factor
+            if scale_by_noise:
+                weight_image /= (noise_value**2)
 
-        if input_type == 'noise':
-            weight_image = 1./data**2
-        if input_type == 'pb':
-            weight_image = data**2
-        if input_type == 'weight':
-            weight_image = data
+            myia.putchunk(weight_image)
+        else:
+            logger.debug('putchunk channel by channel for known memory issue')
+            if len(cube_shape) == 2:
+                blc = [0, 0] # [X, Y]
+                trc = [-1, -1] # [X, Y]
+                input_slice = myia.getchunk(blc, trc)
+                
+                if input_type == 'noise':
+                    weight_slice = 1./input_slice**2
+                if input_type == 'pb':
+                    weight_slice = input_slice**2
+                if input_type == 'weight':
+                    weight_slice = input_slice
+                if scale_by_factor is not None:
+                    weight_slice *= scale_by_factor
+                if scale_by_noise:
+                    weight_slice /= (noise_value**2)
 
-    # Now we have a weight image. If request, scale the data by a factor.
+                myia.putchunk(weight_slice, blc)
+            elif len(cube_shape) == 3:
+                for ichan in range(cube_shape[2]):
+                    blc = [0, 0, ichan]
+                    trc = [-1, -1, ichan]
+                    input_slice = myia.getchunk(blc, trc)
+                    
+                    if input_type == 'noise':
+                        weight_slice = 1./input_slice**2
+                    if input_type == 'pb':
+                        weight_slice = input_slice**2
+                    if input_type == 'weight':
+                        weight_slice = input_slice
+                    
+                    if scale_by_factor is not None:
+                        weight_slice *= scale_by_factor
+                    if scale_by_noise:
+                        weight_slice /= (noise_value**2)
+                    
+                    myia.putchunk(weight_slice, blc)
+            elif len(cube_shape) == 4:
+                for istokes in range(cube_shape[3]):
+                    for ichan in range(cube_shape[2]):
+                        blc = [0, 0, ichan, istokes]
+                        trc = [-1, -1, ichan, istokes]
+                        input_slice = myia.getchunk(blc, trc)
 
-    if scale_by_factor is not None:
+                        if input_type == 'noise':
+                            weight_slice = 1./input_slice**2
+                        if input_type == 'pb':
+                            weight_slice = input_slice**2
+                        if input_type == 'weight':
+                            weight_slice = input_slice
 
-        weight_image = weight_image * scale_by_factor
+                        if scale_by_factor is not None:
+                            weight_slice *= scale_by_factor
+                        if scale_by_noise:
+                            weight_slice /= (noise_value**2)
 
-    # If request, scale the data by the inverse square of the noise estimate.
+                        myia.putchunk(weight_slice, blc)
 
-    if scale_by_noise:
-
-        weight_image = weight_image * 1./noise_value**2
-
-    # Put the data back into the file and close it.
-    myia.putchunk(weight_image)
     myia.close()
 
     return(None)
@@ -983,12 +1074,52 @@ def mosaic_aligned_data(
     # Feed our two LEL strings into immath to make the sum and weight
     # images.
 
-    myia = au.createCasaTool(casaStuff.iatool)
+    # Check for memory issues
+    has_memory_issue, cube_shape = ccr.check_getchunk_putchunk_memory_issue(
+        full_imlist[0], myia=myia, return_shape=True)
+
+    # Replace masked pixels - do this channel-by-channel for large cubes
     for thisfile in full_imlist:
         myia.open(thisfile)
-        if not np.all(myia.getchunk(getmask=True)):
-            myia.replacemaskedpixels(0.0)
-            myia.set(pixelmask=1)
+        
+        if not has_memory_issue:
+            if not np.all(myia.getchunk(getmask=True)):
+                myia.replacemaskedpixels(0.0)
+                myia.set(pixelmask=1)
+        else: # Large cube - process channel by channel
+            logger.debug(f'Replacing masked pixels channel-by-channel for {thisfile}')
+            if len(cube_shape) == 2:
+                blc = [0, 0] # [X, Y]
+                trc = [cube_shape[0]-1, cube_shape[1]-1] # [X, Y]
+                mask_slice = myia.getchunk(blc, trc, getmask=True)
+                if not np.all(mask_slice):
+                    data_slice = myia.getchunk(blc, trc)
+                    data_slice[~mask_slice] = 0.0
+                    myia.putchunk(data_slice, blc)
+                myia.set(pixelmask=1)
+
+            elif len(cube_shape) == 3:
+                for ichan in range(cube_shape[2]):
+                    blc = [0, 0, ichan]
+                    trc = [cube_shape[0]-1, cube_shape[1]-1, ichan]
+                    mask_slice = myia.getchunk(blc, trc, getmask=True)
+                    if not np.all(mask_slice):
+                        data_slice = myia.getchunk(blc, trc)
+                        data_slice[~mask_slice] = 0.0
+                        myia.putchunk(data_slice, blc)
+                myia.set(pixelmask=1)
+                        
+            elif len(cube_shape) == 4:
+                for istokes in range(cube_shape[3]):
+                    for ichan in range(cube_shape[2]):
+                        blc = [0, 0, ichan, istokes]
+                        trc = [cube_shape[0]-1, cube_shape[1]-1, ichan, istokes]
+                        mask_slice = myia.getchunk(blc, trc, getmask=True)
+                        if not np.all(mask_slice):
+                            data_slice = myia.getchunk(blc, trc)
+                            data_slice[~mask_slice] = 0.0
+                            myia.putchunk(data_slice, blc)
+                myia.set(pixelmask=1)
         myia.close()
 
     cwd = os.getcwd()
@@ -1000,15 +1131,134 @@ def mosaic_aligned_data(
     local_outfile = os.path.basename(outfile)
     local_maskfile = os.path.basename(mask_file)
 
-    casaStuff.immath(imagename = local_imlist, mode='evalexpr',
-                     expr=lel_exp_sum, outfile=sum_file,
-                     stokes='I',
-                     imagemd = local_imlist[0])
+    if not has_memory_issue:
+        # Original approach for smaller cubes
+        casaStuff.immath(imagename = local_imlist, mode='evalexpr',
+                         expr=lel_exp_sum, outfile=sum_file, 
+                         stokes='I',
+                         imagemd = local_imlist[0])
 
-    casaStuff.immath(imagename = local_imlist, mode='evalexpr',
-                     expr=lel_exp_weight, outfile=weight_file,
-                     stokes='I',
-                     imagemd = local_imlist[0])
+        casaStuff.immath(imagename = local_imlist, mode='evalexpr',
+                         expr=lel_exp_weight, outfile=weight_file, 
+                         stokes='I',
+                         imagemd = local_imlist[0])
+    else:
+        # Process channel-by-channel for large cubes
+        logger.info('Processing mosaic channel-by-channel to avoid memory issues')
+        
+        # Create template files
+        os.system("cp -r "+local_imlist[0]+" "+sum_file)
+        os.system("cp -r "+local_imlist[0]+" "+weight_file)
+        
+        myia_sum = au.createCasaTool(casaStuff.iatool)
+        myia_weight = au.createCasaTool(casaStuff.iatool)
+        myia_sum.open(sum_file)
+        myia_weight.open(weight_file)
+        
+        ndim = len(cube_shape)
+        
+        try:
+            if ndim == 3:
+                nchan = cube_shape[2]
+                logger.info(f'Processing {nchan} channels')
+                
+                for ichan in range(nchan):
+                    if ichan % 10 == 0:
+                        logger.info(f'Processing channel {ichan+1}/{nchan}')
+                    
+                    blc = [0, 0, ichan]
+                    
+                    # Extract channel slices from all input images
+                    temp_chan_images = []
+                    for idx, im in enumerate(local_imlist):
+                        temp_chan = f'temp_chan_{ichan}_img_{idx}'
+                        casaStuff.imsubimage(imagename=im, outfile=temp_chan,
+                                           chans=str(ichan), dropdeg=False)
+                        temp_chan_images.append(temp_chan)
+                    
+                    # Process sum
+                    temp_sum = f'temp_sum_ch{ichan}'
+                    casaStuff.immath(imagename=temp_chan_images, mode='evalexpr', 
+                                    expr=lel_exp_sum, outfile=temp_sum)
+                    
+                    myia_temp = au.createCasaTool(casaStuff.iatool)
+                    myia_temp.open(temp_sum)
+                    sum_slice = myia_temp.getchunk()
+                    myia_temp.close()
+                    
+                    myia_sum.putchunk(sum_slice, blc)
+                    
+                    # Process weight
+                    temp_weight = f'temp_weight_ch{ichan}'
+                    casaStuff.immath(imagename=temp_chan_images, mode='evalexpr', 
+                                    expr=lel_exp_weight, outfile=temp_weight)
+                    
+                    myia_temp.open(temp_weight)
+                    weight_slice = myia_temp.getchunk()
+                    myia_temp.close()
+                    
+                    myia_weight.putchunk(weight_slice, blc)
+                    
+                    # Cleanup temporary files
+                    for temp in temp_chan_images + [temp_sum, temp_weight]:
+                        os.system('rm -rf ' + temp)
+                        
+            elif ndim == 4:
+                nstokes = cube_shape[3]
+                nchan = cube_shape[2]
+                total = nstokes * nchan
+                logger.info(f'Processing {nstokes} Stokes x {nchan} channels = {total} planes')
+                
+                counter = 0
+                for istokes in range(nstokes):
+                    for ichan in range(nchan):
+                        counter += 1
+                        if counter % 10 == 0:
+                            logger.info(f'Processing plane {counter}/{total}')
+                        
+                        blc = [0, 0, ichan, istokes]
+                        
+                        # Extract channel/stokes slices
+                        temp_chan_images = []
+                        for idx, im in enumerate(local_imlist):
+                            temp_chan = f'temp_ch{ichan}_st{istokes}_img{idx}'
+                            casaStuff.imsubimage(imagename=im, outfile=temp_chan,
+                                               chans=str(ichan), stokes=str(istokes), 
+                                               dropdeg=False)
+                            temp_chan_images.append(temp_chan)
+                        
+                        # Process sum
+                        temp_sum = f'temp_sum_ch{ichan}_st{istokes}'
+                        casaStuff.immath(imagename=temp_chan_images, mode='evalexpr',
+                                        expr=lel_exp_sum, outfile=temp_sum)
+                        
+                        myia_temp = au.createCasaTool(casaStuff.iatool)
+                        myia_temp.open(temp_sum)
+                        sum_slice = myia_temp.getchunk()
+                        myia_temp.close()
+                        
+                        myia_sum.putchunk(sum_slice, blc)
+                        
+                        # Process weight
+                        temp_weight = f'temp_weight_ch{ichan}_st{istokes}'
+                        casaStuff.immath(imagename=temp_chan_images, mode='evalexpr',
+                                        expr=lel_exp_weight, outfile=temp_weight)
+                        
+                        myia_temp.open(temp_weight)
+                        weight_slice = myia_temp.getchunk()
+                        myia_temp.close()
+                        
+                        myia_weight.putchunk(weight_slice, blc)
+                        
+                        # Cleanup
+                        for temp in temp_chan_images + [temp_sum, temp_weight]:
+                            os.system('rm -rf ' + temp)
+            
+        finally:
+            myia_sum.close()
+            myia_weight.close()
+        
+        logger.info('Channel-by-channel sum/weight processing complete')
 
     # Just to be safe, reset the masks on the two images.
 
@@ -1022,19 +1272,75 @@ def mosaic_aligned_data(
     myia.close()
 
     # Now divide the sum*weight image by the weight image.
+    if not has_memory_issue:
 
-    casaStuff.immath(imagename = [sum_file, weight_file], mode='evalexpr',
-                expr='iif(IM1 > 0.0, IM0/IM1, 0.0)', outfile=temp_file,
-                imagemd = sum_file)
+        casaStuff.immath(imagename = [sum_file, weight_file], mode='evalexpr',
+                    expr='iif(IM1 > 0.0, IM0/IM1, 0.0)', outfile=temp_file,
+                    imagemd = sum_file)
 
-    # The mask for the final output is where we have any weight. This
-    # may not be exactly what's desired in all cases, but it's not
-    # clear to me what else to do except for some weight threshold
-    # (does not have to be zero, though, I guess).
+        # The mask for the final output is where we have any weight. This
+        # may not be exactly what's desired in all cases, but it's not
+        # clear to me what else to do except for some weight threshold
+        # (does not have to be zero, though, I guess).
 
-    casaStuff.immath(imagename = weight_file, mode='evalexpr',
-                     expr='iif(IM0 > 0.0, 1.0, 0.0)',
-                     outfile=local_maskfile)
+        casaStuff.immath(imagename = weight_file, mode='evalexpr',
+                        expr='iif(IM0 > 0.0, 1.0, 0.0)',
+                        outfile=local_maskfile)
+    
+    else:
+        logger.info('Processing division and mask channel-by-channel')
+        
+        os.system("cp -r "+sum_file+" "+temp_file)
+        os.system("cp -r "+weight_file+" "+local_maskfile)
+        
+        myia_temp = au.createCasaTool(casaStuff.iatool)
+        myia_mask = au.createCasaTool(casaStuff.iatool)
+        myia_temp.open(temp_file)
+        myia_mask.open(local_maskfile)
+
+        try:
+            if ndim == 3:
+                for ichan in range(nchan):
+                    blc = [0, 0, ichan]
+                    
+                    myia_sum.open(sum_file)
+                    sum_slice = myia_sum.getchunk(blc, [cube_shape[0]-1, cube_shape[1]-1, ichan])
+                    myia_sum.close()
+                    
+                    myia_weight.open(weight_file)
+                    weight_slice = myia_weight.getchunk(blc, [cube_shape[0]-1, cube_shape[1]-1, ichan])
+                    myia_weight.close()
+                    
+                    # Division
+                    result_slice = np.where(weight_slice > 0.0, sum_slice/weight_slice, 0.0)
+                    myia_temp.putchunk(result_slice, blc)
+                    
+                    # Mask
+                    mask_slice = np.where(weight_slice > 0.0, 1.0, 0.0)
+                    myia_mask.putchunk(mask_slice, blc)
+                    
+            elif ndim == 4:
+                for istokes in range(nstokes):
+                    for ichan in range(nchan):
+                        blc = [0, 0, ichan, istokes]
+                        trc = [cube_shape[0]-1, cube_shape[1]-1, ichan, istokes]
+                        
+                        myia_sum.open(sum_file)
+                        sum_slice = myia_sum.getchunk(blc, trc)
+                        myia_sum.close()
+                        
+                        myia_weight.open(weight_file)
+                        weight_slice = myia_weight.getchunk(blc, trc)
+                        myia_weight.close()
+                        
+                        result_slice = np.where(weight_slice > 0.0, sum_slice/weight_slice, 0.0)
+                        myia_temp.putchunk(result_slice, blc)
+                        
+                        mask_slice = np.where(weight_slice > 0.0, 1.0, 0.0)
+                        myia_mask.putchunk(mask_slice, blc)
+        finally:
+            myia_temp.close()
+            myia_mask.close()
 
     # Add in potential Stokes axis to the mask file
     myia = au.createCasaTool(casaStuff.iatool)

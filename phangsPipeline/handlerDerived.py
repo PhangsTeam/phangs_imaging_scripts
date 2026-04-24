@@ -28,6 +28,7 @@ import numpy as np
 
 from . import handlerTemplate
 from . import utilsFilenames
+from .casaCubeRoutines import check_getchunk_putchunk_memory_issue
 from .scConvolution import smooth_cube
 from .scMaskingRoutines import recipe_phangs_strict_mask, recipe_phangs_broad_mask
 from .scMoments import moment_generator
@@ -697,6 +698,10 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
             else:
 
+                huge_cube_flag = check_getchunk_putchunk_memory_issue(indir + input_file)
+                if huge_cube_flag:
+                    logger.info(f"Setting huge_cube_flag to {huge_cube_flag} for channel-wise processing.")
+
                 if 'tol' in convolve_kwargs:
                     tol = convolve_kwargs['tol']
 
@@ -710,7 +715,8 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                                 tol=tol, nan_treatment=nan_treatment,
                                 make_coverage_cube=True, coveragefile=outdir + coveragefile,
                                 collapse_coverage=True, coverage2dfile=outdir + coverage2dfile,
-                                overwrite=overwrite)
+                                overwrite=overwrite, 
+                                huge_cube=huge_cube_flag)
 
                 if res_type == 'phys':
                     this_distance = self._kh.get_distance_for_target(target)
@@ -724,7 +730,8 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                                 tol=tol, nan_treatment=nan_treatment,
                                 make_coverage_cube=True, coveragefile=outdir + coveragefile,
                                 collapse_coverage=True,
-                                overwrite=overwrite)
+                                overwrite=overwrite, 
+                                huge_cube=huge_cube_flag)
 
         return ()
 
