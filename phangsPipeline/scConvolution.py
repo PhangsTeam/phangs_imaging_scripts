@@ -261,7 +261,7 @@ def smooth_cube(
                             header=hdr).writeto(outfile)
             with fits.open(outfile, mode='update', memmap=True) as hdul:
                 for i in range(nchan):
-                    hdul[0].data[i] = np.array(cube.filled_data[i], dtype=dtype)
+                    hdul[0].data[i] = cube.unitless_filled_data[i].astype(dtype)
                 hdul.flush()
         else:
             hdu = fits.PrimaryHDU(np.array(cube.filled_data[:], dtype=dtype),
