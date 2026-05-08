@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Add checkout back into dependabot-changelog action (#334).
 - Fix changelog path in dependabot-changelog action (#333).
 - Don't retrigger workflows for dependabot (#332).
 - check-changelog action now uses CHANGELOG.md (#331).
