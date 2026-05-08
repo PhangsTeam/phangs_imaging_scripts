@@ -24,6 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Large-cube memory issues with channel-wise processing (#323)
 
 ### Dependencies
-
 - Bump actions/upload-artifact from 6 to 7 (#313).
 - Bump casaplotms requirement from >=2.7.4 to >=2.8.2 (#320).
+- Bump `codecov/codecov-action` from 5 to 6 ([#328](https://github.com/PhangsTeam/phangs_imaging_scripts/pull/328))
