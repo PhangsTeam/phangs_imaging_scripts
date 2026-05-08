@@ -20,4 +20,4 @@ jobs:
     steps:
       - uses: tarides/changelog-check-action@v3
         with:
-          changelog: CHANGES.rst
+          changelog: CHANGELOG.md
