@@ -13,12 +13,6 @@ jobs:
   changelog:
     runs-on: ubuntu-latest
     steps:
-
-      # Retrigger workflows
-      - uses: actions/checkout@v3
-        with:
-          token: ${{ secrets.RETRIGGER_WORKFLOW_TOKEN }}
-
       # Add changelog entry
       - uses: dangoslen/dependabot-changelog-helper@v4.3.0
         with:
