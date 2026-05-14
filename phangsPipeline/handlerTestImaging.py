@@ -42,7 +42,6 @@ import logging
 import os
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 # Check casa environment by importing CASA-only packages
 from .check_imports import is_casa_installed

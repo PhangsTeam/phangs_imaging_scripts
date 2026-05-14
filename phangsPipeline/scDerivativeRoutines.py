@@ -11,7 +11,6 @@ from spectral_cube import Projection
 from . import __version__
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 # &%&%&&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
 # Helper functions

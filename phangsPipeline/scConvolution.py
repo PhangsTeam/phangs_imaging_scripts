@@ -8,7 +8,6 @@ from radio_beam import Beam
 from spectral_cube import SpectralCube, LazyMask, Projection
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 def coverage_collapser(coveragecube,
                        coverage2dfile=None,

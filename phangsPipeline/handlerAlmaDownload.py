@@ -219,7 +219,6 @@ def get_casa_version_from_calibration_script(script):
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 class AlmaDownloadHandler(handlerTemplate.HandlerTemplate):
     """

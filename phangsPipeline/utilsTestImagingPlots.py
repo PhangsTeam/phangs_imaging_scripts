@@ -40,7 +40,6 @@ from datetime import datetime
 import numpy as np
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 try:
     import matplotlib

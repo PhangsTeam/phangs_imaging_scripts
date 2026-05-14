@@ -14,7 +14,6 @@ np.seterr(divide='ignore', invalid='ignore')
 mad_to_std_fac = 1.482602218505602
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 def mad_zero_centered(data, mask=None):
     """

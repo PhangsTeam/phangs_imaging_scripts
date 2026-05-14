@@ -31,7 +31,6 @@ sdintlib = SDINT_helper()
 synu = casaStuff.synthesisutils()
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 
 # Setup functions
