@@ -16,7 +16,6 @@ from . import casaStuff
 from . import utilsLines as lines
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 # Physical constants
 sol_kms = 2.99792458e5

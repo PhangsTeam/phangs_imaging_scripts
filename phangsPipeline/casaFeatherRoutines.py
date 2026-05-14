@@ -14,7 +14,6 @@ from . import casaStuff
 
 # Logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 #region Feathering and single dish routines
 

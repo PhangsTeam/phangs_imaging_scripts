@@ -35,7 +35,6 @@ from .scNoiseRoutines import recipe_phangs_noise
 from .scStackingRoutines import recipe_phangs_vfield, recipe_shuffle_cube
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 
 class DerivedHandler(handlerTemplate.HandlerTemplate):

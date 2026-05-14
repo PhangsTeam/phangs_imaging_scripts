@@ -14,7 +14,6 @@ from . import casaStuff
 from .utilsSingleDish import getTPSampling
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 # path constants
 path_calibration = '../calibration/'

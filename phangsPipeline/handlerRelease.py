@@ -26,7 +26,6 @@ from . import utilsFilenames
 from . import utilsResolutions
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 
 class ReleaseHandler(handlerTemplate.HandlerTemplate):

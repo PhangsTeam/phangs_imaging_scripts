@@ -15,7 +15,6 @@ from . import casaStuff
 from .clean_call import CleanCall
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 
 # endregion
