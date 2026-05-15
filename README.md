@@ -36,7 +36,7 @@ For issues, the preferred method is to open an issue on the
 
 We recommend installing the pipeline in a separate [Conda](https://www.anaconda.com/) environment.
 
-The pipeline works in Python>=3.12, CASA>=6.7.3, and is pip installable:
+The pipeline works in Python 3.12, CASA>=6.7.3, and is pip installable:
 
 ```bash
 pip install git+https://github.com/phangsTeam/phangs_imaging_scripts.git
