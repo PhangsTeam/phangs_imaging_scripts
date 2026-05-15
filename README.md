@@ -77,7 +77,16 @@ import phangsPipeline as ppl
 ```
 
 You will also need to download [analysisUtils](https://doi.org/10.5281/zenodo.7502159). Make sure to grab the latest version, and append the location of
-these scripts in your PATH.
+these scripts in your PATH. A way you can do this is:
+
+```
+pip install uv
+pip install zenodo-get
+uvx zenodo_get 10.5281/zenodo.7502159 -o /path/to/analysis_scripts
+tar -xf /path/to/analysis_scripts/analysis_scripts.tar -C /path/to/analysis_scripts/
+```
+
+Where you replace /path/to/analysis_scripts/ with the location in your path where you want to place the analysis scripts (needs to be in your path).
 
 On the first run, you may get an error about downloading CASA data. In this case, ensure the directory it lists exists
 and rerun. You can change this data path by editing config.py in ~/.casa.
