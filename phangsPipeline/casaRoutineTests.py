@@ -14,7 +14,6 @@ import numpy as np
 from . import casaMaskingRoutines as cma
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 def test_estimate_noise(
     ):

@@ -9,7 +9,6 @@ from .utilsImages import *
 np.seterr(divide='ignore', invalid='ignore')
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 def make_theoretical_noise_from_aot(
         infile=None, array='12m', freq_ghz=230.538,

@@ -8,7 +8,6 @@ import numpy as np
 from . import utilsLists as lists
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 # Drawn from Splatalogue at http://www.cv.nrao.edu/php/splat/
 

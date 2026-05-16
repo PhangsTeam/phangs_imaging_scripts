@@ -16,7 +16,6 @@ from . import casaStuff
 from . import casaCubeRoutines as ccr
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 # region Noise estimation
 

@@ -17,7 +17,6 @@ np.seterr(divide='ignore', invalid='ignore')
 mad_to_std_fac = 1.482602218505602
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 
 def nchan_thresh_mask(cube, thresh=5., nchan=2):

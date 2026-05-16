@@ -12,7 +12,6 @@ from . import utilsKeyReaders as key_readers
 from . import utilsLists as list_utils
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 VALID_IMAGING_STAGES = ['dirty', 'multiscale', 'singlescale']
 

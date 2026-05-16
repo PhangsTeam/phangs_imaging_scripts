@@ -17,7 +17,6 @@ from . import __version__
 
 # Logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 #region Check getchunk putchunk memory issue
 

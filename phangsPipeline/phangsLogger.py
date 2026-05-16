@@ -1,46 +1,60 @@
 import logging
 import sys
 
-def setup_logger(level='INFO',logfile=None):
+ALLOWED_LOG_LEVELS = [
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL",
+]
 
-    # Set up the logger
-    root = logging.getLogger()
 
-    screen_log_format = '[%(levelname).4s] [%(funcName)25s] %(message)s'
-    file_log_format = '[%(asctime)-15s] [%(levelname)08s]  [%(name)s] [%(funcName)s] %(message)s'
+def setup_logger(
+    level: str = "INFO",
+    log_format: str = None,
+    logfile: str = None,
+) -> logging.Logger:
+    """Configure and attach stream/file handlers for this module logger.
 
-    if level.upper() not in ['DEBUG','INFO','WARNING','ERROR','CRITICAL']:
-        level_value=logging.WARNING
-    if level == 'DEBUG':
-        level_value = logging.DEBUG
-    if level == 'INFO':
-        level_value = logging.INFO
-    if level == 'WARNING':
-        level_value = logging.WARNING
-    if level == 'ERROR':
-        level_value = logging.ERROR
-    if level == 'CRITICAL':
-        level_value = logging.CRITICAL
+    Args:
+        level (str): Logging level name used for handler thresholds.
+        log_format (str | None): Formatter pattern. If ``None``, a default
+            timestamped format is used.
+        logfile (str | None): Optional path to a log file. When provided, logs
+            are written to both stdout and this file.
 
-    root.handlers = []
+    Returns:
+        logging.Logger: Configured logger instance for this module.
+    """
 
+    # Raise Error if log level is not allowed
+    level = level.upper()
+    if level not in ALLOWED_LOG_LEVELS:
+        raise ValueError(f"level should be one of {ALLOWED_LOG_LEVELS}, not {level}")
+
+    # Set log level
+    logger = logging.getLogger()
+    logger.setLevel(level)
+
+    if log_format is None:
+        log_format = "[%(asctime)s] [%(levelname)s] [%(funcName)s]: %(message)s"
+    log_formatter = logging.Formatter(
+        log_format,
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    # Set up screen handler
     screen_handler = logging.StreamHandler(sys.stdout)
-    screen_handler.setLevel(level_value)
-    screen_handler.setFormatter(logging.Formatter(screen_log_format))
+    screen_handler.setFormatter(log_formatter)
+    screen_handler.set_name("screen_handler")
+    logger.addHandler(screen_handler)
 
-    root.addHandler(screen_handler)
-
-    #set file output
+    # Set file output and add file handler
     if logfile is not None:
-        print('Setting up logfile: {}'.format(logfile))
-        fh = logging.FileHandler(logfile)
-        fh.setLevel(level_value)
-        fh.setFormatter(logging.Formatter(file_log_format))
-        root.addHandler(fh)
+        file_handler = logging.FileHandler(logfile, mode="w+")
+        file_handler.setFormatter(log_formatter)
+        file_handler.set_name("file_handler")
+        logger.addHandler(file_handler)
 
-
-    # if logfile is not None:
-    #     print("Logging to file not implemented yet.")
-
-    return()
-
+    return logger

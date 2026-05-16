@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial pip-installable version (#292).
 - Added more detailed instructions for installing analysisUtils (#340).
 
+### Changed
+
+- Refactored logging, and added tests (#338).
+
 ### Fixed
 
 - Update auto-commit action in dependabot-changelog (#336)

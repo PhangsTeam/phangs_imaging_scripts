@@ -49,7 +49,6 @@ casa_enabled = is_casa_installed()
 import numpy as np
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 if casa_enabled:
     logger.debug('casa_enabled = True')

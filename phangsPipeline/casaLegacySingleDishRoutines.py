@@ -54,7 +54,6 @@ from .utilsSingleDish import getTPSampling, get_first_arr_val
 es = au.stuffForScienceDataReduction()
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 #region Routines for basic characterization
 

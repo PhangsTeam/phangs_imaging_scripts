@@ -19,7 +19,6 @@ from . import handlerTemplate
 from . import utilsFilenames
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 
 class StatsHandler(handlerTemplate.HandlerTemplate):
