@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Don't retrigger workflows for dependabot (#332).
 - check-changelog action now uses CHANGELOG.md (#331).
 - Large-cube memory issues with channel-wise processing (#323)
+- Calculation of additional number of channels in regrid mstransform call (#344).
 
 ### Dependencies
 - Bump actions/upload-artifact from 6 to 7 (#313).
