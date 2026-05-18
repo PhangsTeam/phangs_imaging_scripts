@@ -293,18 +293,31 @@ def runALMAPipeline(path_galaxy,
     finally:
         h_save()
 
-
-    this_vis = [f"{filename}.ms.atmcor.atmtype1_bl" for filename in EBsnames
-                if os.path.exists(f"{filename}.ms.atmcor.atmtype1_bl")]
-
+    # Find baselined files
+    this_vis = []
     for filename in EBsnames:
-        if os.path.exists(f"{filename}.ms.atmcor.atmtype1_bl"):
-            logger.info(f"Found {filename}.ms.atmcor.atmtype1_bl")
+
+        filename_pattern = f"{filename}.ms.atmcor.atmtype*_bl"
+
+        bl_files = glob.glob(filename_pattern)
+
+        # Add to list if we only have 1 entry
+        if len(bl_files) == 1:
+            bl_file = bl_files[0]
+            logger.info(f"Found {bl_file}")
+            this_vis.append(bl_file)
+
+        # If we don't find anything, log a warning
+        elif len(bl_files) == 0:
+            logger.warning(f"Did not find any files matching pattern: {filename_pattern}")
+
+        # We should only find one file, so crash if there's too many
         else:
-            logger.warning(f"Did not find {filename}.ms.atmcor.atmtype1_bl")
+            logger.error(f"Found more than one file matching pattern {filename_pattern}: {bl_files}")
+            raise ValueError(f"Found more than one file matching pattern {filename_pattern}: {bl_files}")
 
     if len(this_vis) == 0:
-        logger.info("No valid MSs found for imaging.")
+        logger.error("No valid MSs found for imaging.")
         raise ValueError("No valid MSs found for imaging.")
 
     # Avoid too many files open issues
