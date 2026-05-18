@@ -1040,6 +1040,7 @@ def suggest_extraction_scheme(
     scheme = {}
     chan_width_list = []
     binfactor_list = []
+    total_nchans = []
 
     for this_infile in infile_list:
 
@@ -1071,6 +1072,11 @@ def suggest_extraction_scheme(
             this_binfactor = int(np.floor(target_chan_kms/chan_width_kms))
             binfactor_list.append(this_binfactor)
 
+            # Figure out the total number of channels we should be expecting
+            # for this spw
+            total_nchan = int(np.floor(vwidth_kms / (chan_width_kms * this_binfactor)))
+            total_nchans.append(total_nchan)
+
             # Record basic file information
             scheme[this_infile][this_spw] = {}
             scheme[this_infile][this_spw]['infile'] = this_infile
@@ -1092,6 +1098,12 @@ def suggest_extraction_scheme(
             # Record channel width information
             scheme[this_infile][this_spw]['chan_width_kms'] = chan_width_kms
             scheme[this_infile][this_spw]['chan_width_ghz'] = chan_width_ghz
+
+    # Get the minimum total number of channels across all SPWs
+    total_nchan = np.nanmin(total_nchans)
+    for this_infile in scheme.keys():
+        for this_spw in scheme[this_infile].keys():
+            scheme[this_infile][this_spw]['total_nchan'] = total_nchan
 
     # ----------------------------------------------------------------
     # Figure out the strategy
@@ -1162,10 +1174,23 @@ def suggest_extraction_scheme(
 
 
 def extract_line(
-        infile=None, outfile=None, spw=None, restfreq_ghz=None, line='co21',
-        vlow_kms=None, vhigh_kms=None, vsys_kms=None, vwidth_kms=None,
-        method='regrid_then_rebin', target_chan_kms=None, nchan=None,
-        binfactor=None, require_full_line_coverage=False, overwrite=False):
+        infile=None,
+        outfile=None,
+        spw=None,
+        restfreq_ghz=None,
+        line='co21',
+        vlow_kms=None,
+        vhigh_kms=None,
+        vsys_kms=None,
+        vwidth_kms=None,
+        method='regrid_then_rebin',
+        target_chan_kms=None,
+        nchan=None,
+        binfactor=None,
+        total_nchan=None,
+        require_full_line_coverage=False,
+        overwrite=False,
+):
     """
     Line extraction routine. Takes infile, outfile, line of interest,
     and algorithm, along with algorithm tuning parameters.
@@ -1282,11 +1307,19 @@ def extract_line(
         vstart_kms = vsys_kms - vwidth_kms/2.0
 
         regrid_params, regrid_msg = build_mstransform_call(
-            infile=infile, outfile=outfile, restfreq_ghz=restfreq_ghz, spw=spw,
-            vstart_kms=vstart_kms, vwidth_kms=vwidth_kms,
-            target_chan_kms=target_chan_kms, nchan=nchan, binfactor=binfactor,
+            infile=infile,
+            outfile=outfile,
+            restfreq_ghz=restfreq_ghz,
+            spw=spw,
+            vstart_kms=vstart_kms,
+            vwidth_kms=vwidth_kms,
+            target_chan_kms=target_chan_kms,
+            nchan=nchan,
+            binfactor=binfactor,
+            total_nchan=total_nchan,
             method='regrid',
-            require_full_line_coverage=require_full_line_coverage)
+            require_full_line_coverage=require_full_line_coverage,
+        )
 
     if method == 'just_rebin' or method == 'regrid_then_rebin' or \
             method == 'rebin_then_regrid':
@@ -1296,15 +1329,24 @@ def extract_line(
             return()
 
         rebin_params, rebin_msg = build_mstransform_call(
-            infile=infile, outfile=outfile, restfreq_ghz=restfreq_ghz, spw=spw,
-            binfactor=binfactor, method='rebin',
-            require_full_line_coverage=require_full_line_coverage)
+            infile=infile,
+            outfile=outfile,
+            restfreq_ghz=restfreq_ghz,
+            spw=spw,
+            binfactor=binfactor,
+            method='rebin',
+            require_full_line_coverage=require_full_line_coverage,
+        )
 
     if multiple_spws:
         combine_params, combine_msg = build_mstransform_call(
-            infile=infile, outfile=outfile, restfreq_ghz=restfreq_ghz, spw=spw,
+            infile=infile,
+            outfile=outfile,
+            restfreq_ghz=restfreq_ghz,
+            spw=spw,
             method='combine',
-            require_full_line_coverage=require_full_line_coverage)
+            require_full_line_coverage=require_full_line_coverage,
+        )
 
     # ............................................
     # string the calls together in the desired order
@@ -1411,10 +1453,21 @@ def extract_line(
 
 
 def build_mstransform_call(
-        infile=None, outfile=None, restfreq_ghz=None, spw=None,
-        vstart_kms=None, vwidth_kms=None, datacolumn=None, method='regrid',
-        target_chan_kms=None, nchan=None, binfactor=None,
-        require_full_line_coverage=False, overwrite=False):
+        infile=None,
+        outfile=None,
+        restfreq_ghz=None,
+        spw=None,
+        vstart_kms=None,
+        vwidth_kms=None,
+        datacolumn=None,
+        method='regrid',
+        target_chan_kms=None,
+        nchan=None,
+        binfactor=None,
+        total_nchan=None,
+        require_full_line_coverage=False,
+        overwrite=False,
+):
     """
     Extract a spectral line from a measurement set and regrid onto a
     new velocity grid with the desired spacing. There are some minor
@@ -1547,14 +1600,15 @@ def build_mstransform_call(
         chanwidth_string = ("{:12.8f}".format(target_chan_kms)+'km/s').strip()
 
         # Figure the number of channels if not supplied
-
         if nchan is None:
             nchan = int(np.max(np.ceil(vwidth_kms / target_chan_kms)))
 
-        if binfactor is not None:
-            # Make sure that we won't lose anything in the rebinning stage
-            add_chans = nchan % binfactor
-            nchan += add_chans
+        # Make sure that we won't lose anything in the rebinning stage
+        add_chans = get_add_chans(nchan=nchan,
+                                  binfactor=binfactor,
+                                  total_nchan=total_nchan,
+                                  )
+        nchan += add_chans
 
         params.update(
             {'combinespws': False, 'regridms': True, 'chanaverage': False,
@@ -1599,6 +1653,48 @@ def build_mstransform_call(
         message = '... combine attempting to merge spectral windows.'
 
     return(params, message)
+
+
+def get_add_chans(
+        nchan: int,
+        binfactor: int = None,
+        total_nchan: int = None,
+):
+    """Get number of additional channels to add or subtract in the mstransform regrid
+
+    Args:
+        nchan (int): Initial number of channels
+        binfactor (int, optional): Bin factor for rebinning. Defaults to None.
+        total_nchan (int, optional): Total number of channels. Defaults to None.
+
+    Returns:
+        int: Number of additional channels to add or subtract
+    """
+
+    add_chans = 0
+
+    # Start with the binfactor
+    if binfactor is not None:
+
+        # If we don't perfectly divide, then bin up
+        bin_chans = nchan % binfactor
+        if bin_chans != 0:
+            add_chans += (binfactor - bin_chans)
+
+    # Then the total number of channels we should be expecting
+    if total_nchan is not None:
+
+        # Get the total numbers of channels we should expect *before* rebinning
+        total_nchan_unbinned = total_nchan * binfactor
+
+        # If this doesn't match up, then correct
+        if nchan + add_chans != total_nchan_unbinned:
+            add_chans += total_nchan_unbinned - (nchan + add_chans)
+
+    # Cast back to integer
+    add_chans = int(add_chans)
+
+    return add_chans
 
 
 def reweight_data(
@@ -1783,8 +1879,10 @@ def batch_extract_continuum(
                 infile=this_infile,
                 outfile=this_outfile,
                 lines_to_flag=lines_to_flag,
-                vsys_kms=vsys_kms, vwidth_kms=vwidth_kms,
-                vlow_kms=vlow_kms, vhigh_kms=vhigh_kms,
+                vsys_kms=vsys_kms,
+                vwidth_kms=vwidth_kms,
+                vlow_kms=vlow_kms,
+                vhigh_kms=vhigh_kms,
                 overwrite=overwrite,
             )
 
