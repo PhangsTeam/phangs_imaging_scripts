@@ -1,13 +1,25 @@
-
+import copy
 import os
 
 import analysisUtils as au
+import astropy.units as u
 import matplotlib
 import numpy as np
 import pylab as pb
 from analysisUtils import mjdSecondsListToDateTime, mjdsecToUT
 
-from .casaStuff import casa_version, tbtool, msmdtool, metool, qatool
+from .casaStuff import (
+    casa_version,
+    tbtool,
+    msmdtool,
+    metool,
+    qatool,
+    iatool,
+    imhead,
+    importfits,
+    imregrid,
+    imtrans,
+)
 
 casaVersion = "{0}.{1}.{2}".format(*casa_version)
 
@@ -18,6 +30,163 @@ def get_first_arr_val(arr):
         arr = arr[0]
 
     return arr
+
+
+def prepare_sd_image(
+        sd_fits_file: str,
+        sd_image_file: str,
+        clean_call,
+        asvelocity: bool = True,
+):
+    """Import a singledish image, and regrid to an interferometric image
+
+    Args:
+        sd_fits_file (str): Input singledish fits file
+        sd_image_file (str): Output singledish image file
+        clean_call: Expected clean call for data
+        asvelocity (bool, optional): If True, then regrid the image to have velocity coordinates instead of frequency
+            coordinates. Defaults to True
+
+    Returns:
+        bool: True if successful
+
+    """
+
+    os.system('rm -rf ' + sd_image_file)
+    importfits(fitsimage=sd_fits_file,
+               imagename=sd_image_file,
+               overwrite=True,
+               defaultaxes=True,
+               defaultaxesvalues=["", "", "", "I"],
+               )
+
+    # Make sure the image axes are the right way round
+    os.system('rm -rf ' + sd_image_file + '_reorder')
+    order = ['rig', 'declin', 'stok', 'frequ']
+    imtrans(imagename=sd_image_file, outfile=sd_image_file + '_reorder',
+            order=order)
+    os.system('rm -rf ' + sd_image_file)
+    os.system('mv -f ' + sd_image_file + '_reorder ' + sd_image_file)
+
+    # Regrid this to the input measurement set to avoid any weirdness with overlap.
+    mytb = au.createCasaTool(tbtool)
+    mytb.open(clean_call.get_param('vis') + '/SPECTRAL_WINDOW')
+    freq = mytb.getcol('CHAN_FREQ')
+    n_chan = mytb.getcol('NUM_CHAN')[0]
+    d_freq = mytb.getcol('CHAN_WIDTH')[0, 0]
+    first_freq = freq[0, 0]
+    mytb.close()
+
+    template_hdr = imregrid(sd_image_file, template='get')
+
+    spec_key = 'spectral2'
+    if spec_key not in template_hdr['csys']:
+        spec_key = 'spectral1'
+
+    spec_shap = template_hdr['shap'][-1]
+    spec_crpix = template_hdr['csys'][spec_key]['wcs']['crpix']
+    spec_cdelt = template_hdr['csys'][spec_key]['wcs']['cdelt']
+    spec_crval = template_hdr['csys'][spec_key]['wcs']['crval']
+
+    if not (spec_shap == n_chan and spec_crpix == 0.0 and spec_cdelt == d_freq and spec_crval == first_freq):
+        template_hdr['shap'][-1] = n_chan
+        template_hdr['csys'][spec_key]['wcs']['crpix'] = 0.0
+        template_hdr['csys'][spec_key]['wcs']['cdelt'] = d_freq
+        template_hdr['csys'][spec_key]['wcs']['crval'] = first_freq
+
+        imregrid(imagename=sd_image_file,
+                 output=sd_image_file + '_regrid',
+                 template=template_hdr,
+                 asvelocity=asvelocity,
+                 overwrite=True,
+                 )
+        os.system('rm -rf ' + sd_image_file)
+        os.system('mv -f ' + sd_image_file + '_regrid ' + sd_image_file)
+
+    # Make sure the cube has per-plane restoring beans, both in channels and polarizations
+    cube_info = imhead(sd_image_file, mode='list')
+    n_chan = cube_info['shape'][-1]
+    n_pol = cube_info['shape'][-2]
+
+    myia = au.createCasaTool(iatool)
+    myia.open(sd_image_file)
+    restoring_beam = myia.restoringbeam()
+    myia.setrestoringbeam(remove=True)
+    for c in range(n_chan):
+        for p in range(n_pol):
+            myia.setrestoringbeam(beam=restoring_beam, channel=c, polarization=p)
+    myia.close()
+
+    return True
+
+
+def get_dish_diameter(
+        sdimage: str,
+):
+    """Get SD dish diameter
+
+    Args:
+        sdimage (string): Path to singledish image file
+
+    Returns
+        float: Dish diameter (m)
+    """
+
+    # Get cube frequency in Hz
+    hdr = imhead(imagename=sdimage, mode="list")
+    freq = hdr["crval4"] * u.Unit(hdr["cunit4"])
+
+    # Get restoring beam in radians
+    myia = au.createCasaTool(iatool)
+    myia.open(infile=sdimage)
+
+    # Beam size is the same for all channels, so just take the first
+    beam_info = myia.restoringbeam(channel=0, polarization=0)
+    myia.close()
+
+    restoring_beam = beam_info["major"]["value"] * u.Unit(beam_info["major"]["unit"])
+    restoring_beam = restoring_beam.to(u.radian).value
+
+    # Convert through to dish diameter in m
+    lam = 3e8 / freq.to(u.Hz).value
+
+    dishdia = 1.22 * lam / restoring_beam
+
+    # Round to nearest 0.1m and convert to float
+    dishdia = float(f"{dishdia:.1f}")
+
+    return dishdia
+
+
+def move_sd_psf(
+        input_root: str,
+        output_root: str = None,
+):
+    """Move sdintimaging generated PSF to avoid clashes
+
+    Args:
+        input_root (string): Input root name for image
+        output_root (string): Output root name for image.
+            Defaults to None, which will inherit input_root
+
+    Returns:
+        bool: True if successful
+    """
+
+    if output_root is None:
+        output_root = copy.deepcopy(input_root)
+
+    in_psf = f"{input_root}.sd.cube.psf"
+    out_psf = f"{output_root}.sd.psf"
+
+    # Start by removing the output, if it exists
+    if os.path.exists(out_psf):
+        os.system(f"rm -rf {out_psf}")
+
+    os.system(f"cp -r {in_psf} {out_psf}")
+
+    return True
+
 
 def setXaxisTimeTicks(adesc, t0, t1, verbose=True):
     """

@@ -38,6 +38,7 @@ if casa_enabled:
     from . import utilsFilenames
     from . import utilsLines as lines
     from .clean_call import CleanCall, CleanCallFunctionDecorator
+    from .utilsSingleDish import get_dish_diameter, prepare_sd_image, move_sd_psf
 
     class ImagingChunkedHandler(handlerTemplate.HandlerTemplate):
         """
@@ -723,14 +724,15 @@ if casa_enabled:
 
             if self.imaging_method == 'sdintimaging':
                 # Put in sdintimaging specific parameters to point at the SD image and PSF
-
                 image_name = clean_call.get_param('imagename')
                 clean_call.set_param('usedata', 'sdint')
 
-                sdimage_name = image_name + '.sd.cube.image'
-                sdpsf_name = image_name + '.sd.cube.psf'
-                if not os.path.exists(sdimage_name):
-                    sdimage_name = image_name + '.sd'
+                sdimage_name = image_name + '.sd'
+                sdpsf_name = image_name + '.sd.psf'
+
+                # If we haven't already generated the PSF, leave this blank so
+                # the task will do it
+                if not os.path.exists(sdpsf_name):
                     sdpsf_name = ''
 
                 clean_call.set_param('sdimage', sdimage_name)
@@ -767,11 +769,9 @@ if casa_enabled:
         def task_setup_sdintimaging(
                 self,
                 clean_call=None,
-                target=None,
-                product=None,
                 asvelocity=True,
                 overwrite=False,
-                chunk_num=None
+                chunk_num=None,
         ):
             """
             Regrid existing TP image to the staged MS
@@ -779,8 +779,6 @@ if casa_enabled:
             Parameters
             ----------
             clean_call : CleanCall object
-            target : str
-            product : str
             asvelocity : bool
             overwrite : bool
             chunk_num : int or None
@@ -791,92 +789,41 @@ if casa_enabled:
                 logger.warning("Require a clean_call object. Returning.")
                 return None
 
-            if target is None:
-                logger.warning("Require a target. Returning.")
-                return None
-
-            if product is None:
-                logger.warning("Require a product. Returning.")
-                return None
-
             # Convert the fits file to an MS
-            sd_fits_file = self._kh.get_sd_filename(target=target, product=product)
+            sd_fits_file = self._kh.get_sd_filename(target=self.target,
+                                                    product=self.product,
+                                                    )
             sd_image_file = clean_call.get_param('imagename') + '.sd'
 
             if not os.path.exists(sd_image_file) or overwrite:
-                os.system('rm -rf ' + sd_image_file)
-                casaStuff.importfits(fitsimage=sd_fits_file,
-                                     imagename=sd_image_file,
-                                     overwrite=True,
-                                     defaultaxes=True,
-                                     defaultaxesvalues=["", "", "", "I"])
 
-                # Make sure the image axes are the right way round
-                os.system('rm -rf ' + sd_image_file + '_reorder')
-                order = ['rig', 'declin', 'stok', 'frequ']
-                casaStuff.imtrans(imagename=sd_image_file, outfile=sd_image_file + '_reorder',
-                                  order=order)
-                os.system('rm -rf ' + sd_image_file)
-                os.system('mv -f ' + sd_image_file + '_reorder ' + sd_image_file)
+                prepare_sd_image(
+                    sd_fits_file=sd_fits_file,
+                    sd_image_file=sd_image_file,
+                    clean_call=clean_call,
+                    asvelocity=asvelocity,
+                )
 
-                # Regrid this to the input measurement set to avoid any weirdness with overlap.
-                mytb = au.createCasaTool(casaStuff.tbtool)
-                mytb.open(clean_call.get_param('vis') + '/SPECTRAL_WINDOW')
-                freq = mytb.getcol('CHAN_FREQ')
-                n_chan = mytb.getcol('NUM_CHAN')[0]
-                d_freq = mytb.getcol('CHAN_WIDTH')[0, 0]
-                first_freq = freq[0, 0]
-                mytb.close()
-
-                template_hdr = casaStuff.imregrid(sd_image_file, template='get')
-
-                spec_key = 'spectral2'
-                if spec_key not in template_hdr['csys']:
-                    spec_key = 'spectral1'
-
-                spec_shap = template_hdr['shap'][-1]
-                spec_crpix = template_hdr['csys'][spec_key]['wcs']['crpix']
-                spec_cdelt = template_hdr['csys'][spec_key]['wcs']['cdelt']
-                spec_crval = template_hdr['csys'][spec_key]['wcs']['crval']
-
-                if not (spec_shap == n_chan and spec_crpix == 0.0 and spec_cdelt == d_freq and spec_crval == first_freq):
-
-                    template_hdr['shap'][-1] = n_chan
-                    template_hdr['csys'][spec_key]['wcs']['crpix'] = 0.0
-                    template_hdr['csys'][spec_key]['wcs']['cdelt'] = d_freq
-                    template_hdr['csys'][spec_key]['wcs']['crval'] = first_freq
-
-                    casaStuff.imregrid(imagename=sd_image_file,
-                                       output=sd_image_file + '_regrid',
-                                       template=template_hdr,
-                                       asvelocity=asvelocity,
-                                       overwrite=True,
-                                       )
-                    os.system('rm -rf ' + sd_image_file)
-                    os.system('mv -f ' + sd_image_file + '_regrid ' + sd_image_file)
-
-                # Make sure the cube has per-plane restoring beans, both in channels and polarizations
-                cube_info = casaStuff.imhead(sd_image_file, mode='list')
-                n_chan = cube_info['shape'][-1]
-                n_pol = cube_info['shape'][-2]
-
-                myia = au.createCasaTool(casaStuff.iatool)
-                myia.open(sd_image_file)
-                restoring_beam = myia.restoringbeam()
-                myia.setrestoringbeam(remove=True)
-                for c in range(n_chan):
-                    for p in range(n_pol):
-                        myia.setrestoringbeam(beam=restoring_beam, channel=c, polarization=p)
-                myia.close()
-                if not chunk_num is None:
+                if chunk_num is not None:
                     start_chan = self.chunk_channel_starts[chunk_num]
                     end_chan = self.chunk_channel_ends[chunk_num]
 
-                    casaStuff.imsubimage(imagename=sd_image_file,  outfile=sd_image_file+"_chunked",overwrite=True, chans=f"{start_chan}~{end_chan}")
-                    sd_image_file= sd_image_file+"_chunked"
+                    casaStuff.imsubimage(
+                        imagename=sd_image_file,
+                        outfile=sd_image_file+"_chunked",
+                        overwrite=True,
+                        chans=f"{start_chan}~{end_chan}",
+                    )
+                    os.system(f"rm -rf {sd_image_file}")
+                    os.system(f"mv {sd_image_file}_chunked {sd_image_file}")
 
+            # If we're sdintimaging, set the dish diameter from the SD image file
+            dishdia = get_dish_diameter(
+                sdimage=sd_image_file,
+            )
+            clean_call.set_param("dishdia", dishdia)
 
-            return sd_image_file
+            return sd_image_file, clean_call
 
 
         def task_gather_into_cube(self, root_name=None,
@@ -1009,10 +956,6 @@ if casa_enabled:
             logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%")
             logger.info("")
 
-            target = self.target
-            product = self.product
-            config = self.config
-            overwrite = False
             if not self._dry_run:
 
                 os.chdir(self._this_imaging_dir)
@@ -1020,25 +963,20 @@ if casa_enabled:
                 for ii, this_chunk_num in enumerate(chunks_iter):
 
                     # Make the chunk clean call:
-                    this_clean_call = self.task_initialize_clean_call(this_chunk_num, stage='dirty')
+                    this_clean_call = self.task_initialize_clean_call(this_chunk_num,
+                                                                      stage='dirty',
+                                                                      )
 
-                    if self.imaging_method == 'sdintimaging':
-                        sd_fits_file = self._kh.get_sd_filename(target=target, product=product)
-                        feather_config = self._kh.get_feather_config_for_interf_config(interf_config=config)
-                        if not sd_fits_file or not feather_config:
-                            logger.warning('No singledish setup for %s, %s, %s, reverting to standard tclean' %
-                                   (target, product, config))
-                            imaging_method = 'tclean'
-                        else:
-                            sd_image_file = self.task_setup_sdintimaging(this_clean_call, target=target, product=product,
-                                                                     overwrite=overwrite,
-                                                                     chunk_num=this_chunk_num)
-                            if not sd_image_file:
-                                logger.error('Error in setting up singledish for sdintimaging')
-
-                            # Set the clean call parameters as necessary.
-                            this_clean_call.set_param('usedata', 'sdint')
-                            this_clean_call.set_param('sdimage', sd_image_file)
+                    # Setup for sdintimaging
+                    if self.imaging_method == "sdintimaging":
+                        sd_image_file, this_clean_call = self.task_setup_sdintimaging(
+                            clean_call=this_clean_call,
+                            overwrite=False,
+                            chunk_num=this_chunk_num,
+                        )
+                        if not sd_image_file:
+                            logger.error('Error in setting up singledish for sdintimaging')
+                            raise Exception("Error in setting up singledish for sdintimaging")
 
                     logger.info("")
                     logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%")
@@ -1055,6 +993,11 @@ if casa_enabled:
                             output_root=this_clean_call.get_param('imagename') + '_dirty',
                             imaging_method=self.imaging_method,
                             wipe_first=True)
+
+                    # If we're running sdintimaging, then we also need to move over the SD PSF
+                    if self.imaging_method == "sdintimaging":
+                        move_sd_psf(input_root=this_clean_call.get_param('imagename'))
+
 
             if gather_chunks_into_cube:
                 self.task_gather_into_cube(root_name='dirty',
@@ -1101,6 +1044,12 @@ if casa_enabled:
                         output_root=this_clean_call.get_param('imagename'),
                         imaging_method=self.imaging_method,
                         wipe_first=True)
+
+                    # If we're running sdintimaging, then we also need to move over the SD PSF
+                    if self.imaging_method == "sdintimaging":
+                        move_sd_psf(input_root=this_clean_call.get_param('imagename')  + '_' + tag,
+                                    output_root=this_clean_call.get_param('imagename'),
+                                    )
 
 
                 # If it exists, try to revert the whole cube.
@@ -1227,23 +1176,16 @@ if casa_enabled:
                 # Make the chunk clean call:
                 this_clean_call = self.task_initialize_clean_call(this_chunk_num, stage='multiscale')
 
-                if self.imaging_method == 'sdintimaging':
-                    sd_fits_file = self._kh.get_sd_filename(target=target, product=product)
-                    feather_config = self._kh.get_feather_config_for_interf_config(interf_config=config)
-                    if not sd_fits_file or not feather_config:
-                        logger.warning('No singledish setup for %s, %s, %s, reverting to standard tclean' %
-                                   (target, product, config))
-                        imaging_method = 'tclean'
-                    else:
-                        sd_image_file = self.task_setup_sdintimaging(this_clean_call, target=target, product=product,
-                                                                     overwrite=overwrite,
-                                                                     chunk_num=this_chunk_num)
-                        if not sd_image_file:
-                            logger.error('Error in setting up singledish for sdintimaging')
-
-                        # Set the clean call parameters as necessary.
-                        this_clean_call.set_param('usedata', 'sdint')
-                        this_clean_call.set_param('sdimage', sd_image_file)
+                # Setup for sdintimaging
+                if self.imaging_method == "sdintimaging":
+                    sd_image_file, this_clean_call = self.task_setup_sdintimaging(
+                        clean_call=this_clean_call,
+                        overwrite=False,
+                        chunk_num=this_chunk_num,
+                    )
+                    if not sd_image_file:
+                        logger.error('Error in setting up singledish for sdintimaging')
+                        raise Exception("Error in setting up singledish for sdintimaging")
 
                 if this_clean_call.get_param('deconvolver') not in ['multiscale', 'mtmfs']:
                     logger.warning("I expected a multiscale or mtmfs deconvolver but got " + str(
@@ -1292,6 +1234,10 @@ if casa_enabled:
                         output_root=this_clean_call.get_param('imagename') + '_multiscale',
                         imaging_method=self.imaging_method,
                         wipe_first=True)
+
+                # If we're running sdintimaging, then we also need to move over the SD PSF
+                if self.imaging_method == "sdintimaging":
+                    move_sd_psf(input_root=this_clean_call.get_param('imagename'))
 
             if gather_chunks_into_cube:
                 self.task_gather_into_cube(root_name='multiscale',
@@ -1440,17 +1386,17 @@ if casa_enabled:
 
                 # Make the chunk clean call:
                 this_clean_call = self.task_initialize_clean_call(this_chunk_num, stage='singlescale')
-                overwrite = False
-                if self.imaging_method == 'sdintimaging':
-                    sd_image_file = self.task_setup_sdintimaging(this_clean_call, target=self.target, product=self.product,
-                                                                 overwrite=overwrite,
-                                                                 chunk_num=this_chunk_num)
+
+                # Setup for sdintimaging
+                if self.imaging_method == "sdintimaging":
+                    sd_image_file, this_clean_call = self.task_setup_sdintimaging(
+                        clean_call=this_clean_call,
+                        overwrite=False,
+                        chunk_num=this_chunk_num,
+                    )
                     if not sd_image_file:
                         logger.error('Error in setting up singledish for sdintimaging')
-
-                    # Set the clean call parameters as necessary.
-                    this_clean_call.set_param('usedata', 'sdint')
-                    this_clean_call.set_param('sdimage', sd_image_file)
+                        raise Exception("Error in setting up singledish for sdintimaging")
 
                 if this_clean_call.get_param('deconvolver') not in ['hogbom','mtmfs']:
                     logger.warning("I expected a singlescale or mtmfs deconvolver but got: " + this_clean_call.get_param('deconvolver'))
@@ -1519,6 +1465,10 @@ if casa_enabled:
                         output_root=this_clean_call.get_param('imagename') + '_singlescale',
                         imaging_method=self.imaging_method,
                         wipe_first=True)
+
+                # If we're running sdintimaging, then we also need to move over the SD PSF
+                if self.imaging_method == "sdintimaging":
+                    move_sd_psf(input_root=this_clean_call.get_param('imagename'))
 
             if gather_chunks_into_cube:
                 self.task_gather_into_cube(root_name='singlescale',
@@ -1689,6 +1639,18 @@ if casa_enabled:
                 chunks_to_iter = [chunk_num]
 
             for chunk_to_iter in chunks_to_iter:
+
+                # If we're sdintimaging, make sure we can do this, else fall back to tclean
+                if self.imaging_method == 'sdintimaging':
+                    sd_fits_file = self._kh.get_sd_filename(
+                        target=self.target,
+                        product=self.product,
+                    )
+                    feather_config = self._kh.get_feather_config_for_interf_config(interf_config=self.config)
+                    if not sd_fits_file or not feather_config:
+                        logger.warning('No singledish setup for %s, %s, %s, reverting to standard tclean' %
+                                       (self.target, self.product, self.config))
+                        self.imaging_method = 'tclean'
 
                 # Make a dirty image (niter=0)
                 if do_dirty_image:

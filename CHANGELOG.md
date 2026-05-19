@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Refactored logging, and added tests (#338).
+- Updated bespoke sdintimaging task, to align with latest CASA version (#347).
 
 ### Fixed
 

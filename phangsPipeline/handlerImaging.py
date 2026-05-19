@@ -64,10 +64,10 @@ if casa_enabled:
 
     from . import casaImagingRoutines as imr
     from . import casaMaskingRoutines as msr
-    from . import casaStuff
     from . import handlerTemplate
     from . import utilsLines as lines
     from . import utilsFilenames
+    from .utilsSingleDish import get_dish_diameter, prepare_sd_image, move_sd_psf
 
     class ImagingHandler(handlerTemplate.HandlerTemplate):
         """
@@ -503,10 +503,12 @@ if casa_enabled:
                 image_name = clean_call.get_param('imagename')
                 clean_call.set_param('usedata', 'sdint')
 
-                sdimage_name = image_name + '.sd.cube.image'
-                sdpsf_name = image_name + '.sd.cube.psf'
-                if not os.path.exists(sdimage_name):
-                    sdimage_name = image_name + '.sd'
+                sdimage_name = image_name + '.sd'
+                sdpsf_name = image_name + '.sd.psf'
+
+                # If we haven't already generated the PSF, leave this blank so
+                # the task will do it
+                if not os.path.exists(sdpsf_name):
                     sdpsf_name = ''
 
                 clean_call.set_param('sdimage', sdimage_name)
@@ -654,60 +656,21 @@ if casa_enabled:
             sd_image_file = clean_call.get_param('imagename') + '.sd'
 
             if not os.path.exists(sd_image_file) or overwrite:
-                os.system('rm -rf ' + sd_image_file)
-                casaStuff.importfits(fitsimage=sd_fits_file, imagename=sd_image_file, overwrite=True)
 
-                # Make sure the image axes are the right way round
-                os.system('rm -rf ' + sd_image_file + '_reorder')
-                order = ['rig', 'declin', 'stok', 'frequ']
-                casaStuff.imtrans(imagename=sd_image_file, outfile=sd_image_file + '_reorder',
-                                  order=order)
-                os.system('rm -rf ' + sd_image_file)
-                os.system('mv -f ' + sd_image_file + '_reorder ' + sd_image_file)
+                prepare_sd_image(
+                    sd_fits_file=sd_fits_file,
+                    sd_image_file=sd_image_file,
+                    clean_call=clean_call,
+                    asvelocity=asvelocity,
+                )
 
-                # Regrid this to the input measurement set to avoid any weirdness with overlap.
-                mytb = au.createCasaTool(casaStuff.tbtool)
-                mytb.open(clean_call.get_param('vis') + '/SPECTRAL_WINDOW')
-                freq = mytb.getcol('CHAN_FREQ')
-                n_chan = mytb.getcol('NUM_CHAN')[0]
-                d_freq = mytb.getcol('CHAN_WIDTH')[0, 0]
-                first_freq = freq[0, 0]
-                mytb.close()
+            # If we're sdintimaging, set the dish diameter from the SD image file
+            dishdia = get_dish_diameter(
+                sdimage=sd_image_file,
+            )
+            clean_call.set_param("dishdia", dishdia)
 
-                template_hdr = casaStuff.imregrid(sd_image_file, template='get')
-
-                spec_shap = template_hdr['shap'][-1]
-                spec_crpix = template_hdr['csys']['spectral2']['wcs']['crpix']
-                spec_cdelt = template_hdr['csys']['spectral2']['wcs']['cdelt']
-                spec_crval = template_hdr['csys']['spectral2']['wcs']['crval']
-
-                if not (spec_shap == n_chan and spec_crpix == 0.0 and spec_cdelt == d_freq and spec_crval == first_freq):
-
-                    template_hdr['shap'][-1] = n_chan
-                    template_hdr['csys']['spectral2']['wcs']['crpix'] = 0.0
-                    template_hdr['csys']['spectral2']['wcs']['cdelt'] = d_freq
-                    template_hdr['csys']['spectral2']['wcs']['crval'] = first_freq
-
-                    casaStuff.imregrid(imagename=sd_image_file, output=sd_image_file + '_regrid',
-                                       template=template_hdr, asvelocity=asvelocity, overwrite=True)
-                    os.system('rm -rf ' + sd_image_file)
-                    os.system('mv -f ' + sd_image_file + '_regrid ' + sd_image_file)
-
-                # Make sure the cube has per-plane restoring beans, both in channels and polarizations
-                cube_info = casaStuff.imhead(sd_image_file, mode='list')
-                n_chan = cube_info['shape'][-1]
-                n_pol = cube_info['shape'][-2]
-
-                myia = au.createCasaTool(casaStuff.iatool)
-                myia.open(sd_image_file)
-                restoring_beam = myia.restoringbeam()
-                myia.setrestoringbeam(remove=True)
-                for c in range(n_chan):
-                    for p in range(n_pol):
-                        myia.setrestoringbeam(beam=restoring_beam, channel=c, polarization=p)
-                myia.close()
-
-            return sd_image_file
+            return sd_image_file, clean_call
 
         @CleanCallFunctionDecorator
         def task_assign_multiscales(
@@ -760,6 +723,10 @@ if casa_enabled:
                         imaging_method=imaging_method,
                         wipe_first=True)
 
+                # If we're running sdintimaging, then we also need to move over the SD PSF
+                if imaging_method == "sdintimaging":
+                    move_sd_psf(input_root=clean_call.get_param('imagename'))
+
             return ()
 
         @CleanCallFunctionDecorator
@@ -788,6 +755,12 @@ if casa_enabled:
                     output_root=clean_call.get_param('imagename'),
                     imaging_method=imaging_method,
                     wipe_first=True)
+
+                # If we're running sdintimaging, then we also need to move over the SD PSF
+                if imaging_method == "sdintimaging":
+                    move_sd_psf(input_root=clean_call.get_param('imagename') + '_' + tag,
+                                output_root=clean_call.get_param('imagename'),
+                                )
 
             return ()
 
@@ -922,6 +895,10 @@ if casa_enabled:
                     output_root=clean_call.get_param('imagename') + '_multiscale',
                     imaging_method=imaging_method,
                     wipe_first=True)
+
+            # If we're running sdintimaging, then we also need to move over the SD PSF
+            if imaging_method == "sdintimaging":
+                move_sd_psf(input_root=clean_call.get_param('imagename'))
 
             return ()
 
@@ -1092,6 +1069,10 @@ if casa_enabled:
                     imaging_method=imaging_method,
                     wipe_first=True)
 
+            # If we're running sdintimaging, then we also need to move over the SD PSF
+            if imaging_method == "sdintimaging":
+                move_sd_psf(input_root=clean_call.get_param('imagename'))
+
             return ()
 
         @CleanCallFunctionDecorator
@@ -1202,15 +1183,29 @@ if casa_enabled:
                         if product_override in product_override or 'all' in product_override:
                             imaging_method = imaging_method_override['new_imaging_method']
 
+            # Check we can do sdintimaging, if we're selecting that
+            if imaging_method == 'sdintimaging':
+                sd_fits_file = self._kh.get_sd_filename(target=target, product=product)
+                feather_config = self._kh.get_feather_config_for_interf_config(interf_config=config)
+                if not sd_fits_file or not feather_config:
+                    logger.warning('No singledish setup for %s, %s, %s, reverting to standard tclean' %
+                                   (target, product, config))
+                    imaging_method = 'tclean'
+
             # These calls instantiate a clean call object with default
             # clean parameters. For the next few steps, we use the clean
             # call appropriate for stage "dirty" imaging.
 
             clean_call = self.task_initialize_clean_call(
-                target=target, config=config, product=product,
-                extra_ext_in=extra_ext_in, suffix_in=suffix_in,
+                target=target,
+                config=config,
+                product=product,
+                imaging_method=imaging_method,
+                extra_ext_in=extra_ext_in,
+                suffix_in=suffix_in,
                 extra_ext_out=extra_ext_out,
-                stage='dirty')
+                stage='dirty',
+            )
 
             if clean_call is None:
                 logger.warning("I could not make a well-formed clean call.")
@@ -1228,30 +1223,16 @@ if casa_enabled:
                     clean_call.set_param('cell', cell, nowarning=True)
                     clean_call.set_param('imsize', imsize, nowarning=True)
 
+            # Setup the SD image for sdintimaging
             if imaging_method == 'sdintimaging':
-                sd_fits_file = self._kh.get_sd_filename(target=target, product=product)
-                feather_config = self._kh.get_feather_config_for_interf_config(interf_config=config)
-                if not sd_fits_file or not feather_config:
-                    logger.warning('No singledish setup for %s, %s, %s, reverting to standard tclean' %
-                                   (target, product, config))
-                    imaging_method = 'tclean'
-                else:
-                    sd_image_file = self.task_setup_sdintimaging(clean_call, target=target, product=product,
-                                                                 overwrite=overwrite)
-                    if not sd_image_file:
-                        logger.error('Error in setting up singledish for sdintimaging')
-
-                    # Set the clean call parameters as necessary.
-                    clean_call.set_param('usedata', 'sdint')
-                    clean_call.set_param('sdimage', sd_image_file)
-
-                    # Catch the case where the frequency axis might go the wrong way round by specifying this exactly to
-                    # the SD parameters
-                    sdintlib = casaStuff.sdint_helper.SDINT_helper()
-                    cube_params = sdintlib.setup_cube_params(sdcube=sd_image_file)
-                    clean_call.set_param('nchan', cube_params['nchan'])
-                    clean_call.set_param('start', cube_params['start'])
-                    clean_call.set_param('width', cube_params['width'])
+                sd_image_file, clean_call = self.task_setup_sdintimaging(clean_call,
+                                                                         target=target,
+                                                                         product=product,
+                                                                         overwrite=overwrite,
+                                                                         )
+                if not sd_image_file:
+                    logger.error('Error in setting up singledish for sdintimaging')
+                    raise Exception('Error in setting up singledish for sdintimaging')
 
             # Make a dirty image (niter=0)
 
@@ -1279,11 +1260,26 @@ if casa_enabled:
             # for stage "multiscale" imaging.
 
             clean_call = self.task_initialize_clean_call(
-                target=target, config=config, product=product,
+                target=target,
+                config=config,
+                product=product,
                 imaging_method=imaging_method,
-                extra_ext_in=extra_ext_in, suffix_in=suffix_in,
+                extra_ext_in=extra_ext_in,
+                suffix_in=suffix_in,
                 extra_ext_out=extra_ext_out,
-                stage='multiscale')
+                stage='multiscale',
+            )
+
+            # Setup the SD image for sdintimaging
+            if imaging_method == 'sdintimaging':
+                sd_image_file, clean_call = self.task_setup_sdintimaging(clean_call,
+                                                                         target=target,
+                                                                         product=product,
+                                                                         overwrite=False,
+                                                                         )
+                if not sd_image_file:
+                    logger.error('Error in setting up singledish for sdintimaging')
+                    raise Exception('Error in setting up singledish for sdintimaging')
 
             # AKL - adding a check on the mask existence here
 
@@ -1320,13 +1316,6 @@ if casa_enabled:
                 clean_call.set_param('cell', cell, nowarning=True)
                 clean_call.set_param('imsize', imsize, nowarning=True)
 
-            # Cube params for sdintimaging
-
-            if imaging_method == 'sdintimaging':
-                clean_call.set_param('nchan', cube_params['nchan'])
-                clean_call.set_param('start', cube_params['start'])
-                clean_call.set_param('width', cube_params['width'])
-
             # Look up the angular scales to clean for this config
 
             self.task_assign_multiscales(config=config, clean_call=clean_call)
@@ -1352,22 +1341,30 @@ if casa_enabled:
             # for stage "singlescale" imaging.
 
             clean_call = self.task_initialize_clean_call(
-                target=target, config=config, product=product,
+                target=target,
+                config=config,
+                product=product,
                 imaging_method=imaging_method,
-                extra_ext_in=extra_ext_in, suffix_in=suffix_in,
+                extra_ext_in=extra_ext_in,
+                suffix_in=suffix_in,
                 extra_ext_out=extra_ext_out,
-                stage='singlescale')
+                stage='singlescale',
+            )
+
+            # Setup the SD image for sdintimaging
+            if imaging_method == 'sdintimaging':
+                sd_image_file, clean_call = self.task_setup_sdintimaging(clean_call,
+                                                                         target=target,
+                                                                         product=product,
+                                                                         overwrite=False,
+                                                                         )
+                if not sd_image_file:
+                    logger.error('Error in setting up singledish for sdintimaging')
+                    raise Exception('Error in setting up singledish for sdintimaging')
 
             if dynamic_sizing:
                 clean_call.set_param('cell', cell, nowarning=True)
                 clean_call.set_param('imsize', imsize, nowarning=True)
-
-            # Cube params for sdintimaging
-
-            if imaging_method == 'sdintimaging':
-                clean_call.set_param('nchan', cube_params['nchan'])
-                clean_call.set_param('start', cube_params['start'])
-                clean_call.set_param('width', cube_params['width'])
 
             # Make a signal-to-noise based mask for use in singlescale clean.
 
