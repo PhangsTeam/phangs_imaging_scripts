@@ -37,11 +37,6 @@ if casa_enabled:
     from .clean_call import CleanCall
 
     class PostProcessHandler(handlerTemplate.HandlerTemplate):
-        """
-        Class to handle post-processing of ALMA data. Post-processing here
-        begins with the results of imaging and proceeds through reduced,
-        science-ready data cubes.
-        """
 
         def __init__(
                 self,
@@ -49,6 +44,11 @@ if casa_enabled:
                 dry_run=False,
                 raise_exception_mosaic_part_missing=False,
         ):
+            """
+            Class to handle post-processing of ALMA data. Post-processing here
+            begins with the results of imaging and proceeds through reduced,
+            science-ready data cubes.
+            """
 
             # inherit template class
             handlerTemplate.HandlerTemplate.__init__(self, key_handler=key_handler, dry_run=dry_run)
@@ -1825,24 +1825,42 @@ if casa_enabled:
 
         def loop_postprocess(
                 self,
-                imaging_method='tclean',
-                do_all=False,
-                do_prep=False,
-                do_feather=False,
-                do_mosaic=False,
-                do_cleanup=False,
-                do_summarize=False,
-                trim_coarse_beam_edge_channels=False,
-                feather_apod=False,
-                feather_noapod=False,
-                feather_before_mosaic=False,
-                make_directories=True,
+                imaging_method: str = 'tclean',
+                do_all: bool = False,
+                do_prep: bool = False,
+                do_feather: bool = False,
+                do_mosaic: bool = False,
+                do_cleanup: bool = False,
+                do_summarize: bool = False,
+                trim_coarse_beam_edge_channels: bool = False,
+                feather_apod: bool = False,
+                feather_noapod: bool = False,
+                feather_before_mosaic: bool = False,
+                make_directories: bool = True,
         ):
             """
             Loops over the full set of targets, products, and
             configurations to run the postprocessing. Toggle the parts of
             the loop using the do_XXX booleans. Other choices affect the
             algorithms used.
+
+            Args:
+                imaging_method (str, optional): Imaging method used. Should
+                    be one of 'tclean', 'sdintimaging'. Defaults to 'tclean'.
+                do_all (bool, optional): If True, run all steps. Defaults to False.
+                do_prep (bool, optional): If True, run the preparation steps. Defaults to False.
+                do_feather (bool, optional): If True, run the feathering steps. Defaults to False.
+                do_mosaic (bool, optional): If True, run the mosaicking steps. Defaults to False.
+                do_cleanup (bool, optional): If True, run the cleanup steps. Defaults to False.
+                do_summarize (bool, optional): If True, run the summarization steps. Defaults to False.
+                trim_coarse_beam_edge_channels (bool, optional): If True, will trim out edge channels
+                    in the cube with lower resolution beams. Defaults to False
+                feather_apod (bool, optional): If True, will do feathering with apodization. Defaults to False.
+                feather_noapod (bool, optional): If True, will do feathering without apodization. Defaults to False.
+                feather_before_mosaic (bool, optional): If True, will feather each tile before mosaicking.
+                    Defaults to False.
+                make_directories (bool, optional): If True, will make directories that don't already exist.
+                    Defaults to True.
             """
 
             if do_all:

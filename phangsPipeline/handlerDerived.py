@@ -38,11 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 class DerivedHandler(handlerTemplate.HandlerTemplate):
-    """
-    Class to create signal masks based on image cubes, and then apply
-    the masks to make moment maps. This is done for each galaxy at
-    multiple spatial/angular scales.
-    """
+
 
     ############
     # __init__ #
@@ -53,6 +49,12 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
             key_handler=None,
             dry_run=False,
     ):
+        """
+        Class to create signal masks based on image cubes, and then apply
+        the masks to make moment maps. This is done for each galaxy at
+        multiple spatial/angular scales.
+        """
+
         # inherit template class
         handlerTemplate.HandlerTemplate.__init__(self,
                                                  key_handler=key_handler,
@@ -64,27 +66,54 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
     def loop_derive_products(
             self,
-            do_all=False,
-            do_convolve=False,
-            do_noise=False,
-            do_strictmask=False,
-            do_broadmask=False,
-            do_moments=False,
-            do_secondary=False,
-            do_vfield=False,
-            do_shuffling=False,
-            do_flatmask=False,
-            do_flatmaps=False,
-            make_directories=True,
-            extra_ext_in='',
-            extra_ext_out='',
-            overwrite=True,
+            do_all: bool = False,
+            do_convolve: bool = False,
+            do_noise: bool = False,
+            do_strictmask: bool = False,
+            do_broadmask: bool = False,
+            do_moments: bool = False,
+            do_secondary: bool = False,
+            do_vfield: bool = False,
+            do_shuffling: bool = False,
+            do_flatmask: bool = False,
+            do_flatmaps: bool = False,
+            make_directories: bool = True,
+            overwrite: bool = True,
     ):
         """
         Loops over the full set of targets, spectral products (note
         the dual definition of "product" here), and configurations to
         do the imaging. Toggle the parts of the loop using the do_XXX
         booleans. Other choices affect algorithms used.
+
+        Args:
+            do_all (bool, optional): If True, will create all
+                derived product types. Defaults to False.
+            do_convolve (bool, optional): If True, will do
+                convolution to different resolutions. Defaults to False.
+            do_noise (bool, optional): If True, will do
+                noise estimation. Defaults to False.
+            do_strictmask (bool, optional): If True, will
+                build strict masks. Defaults to False.
+            do_broadmask (bool, optional): If True, will
+                build broad masks. Defaults to False.
+            do_moments (bool, optional): If True, will
+                generate moment maps. Defaults to False.
+            do_secondary (bool, optional): If True, will
+                generate secondary moment maps. Defaults to False.
+            do_vfield (bool, optional): If True, will
+                generate velocity field. Defaults to False.
+            do_shuffling (bool, optional): If True, will
+                generate shuffled cubes. Defaults to False.
+            do_flatmask (bool, optional): If True, will
+                generate flat masks. Defaults to False.
+            do_flatmaps (bool, optional): If True, will
+                generate flat maps. Defaults to False.
+            make_directories (bool, optional): If True, will
+                make the directories if they don't already exist.
+                Defaults to True.
+            overwrite (bool, optional): If True, will overwrite
+                existing files. Defaults to True.
         """
 
         if do_all:

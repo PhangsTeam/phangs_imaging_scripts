@@ -33,16 +33,24 @@ if casa_enabled:
     from . import utilsLines
 
     class SingleDishHandler(handlerTemplate.HandlerTemplate):
-        """
-        Class to handle single dish data.
-        """
 
         def __init__(
             self,
-            key_handler = None,
-            dry_run = False,
-            use_legacy_pipeline=False,
-            ):
+            key_handler=None,
+            dry_run: bool = False,
+            use_legacy_pipeline: bool = False,
+        ):
+            """
+            Class to handle imaging single dish data.
+
+            Args:
+                key_handler: KeyHandler instance
+                dry_run (bool): If True, will not modify files on disk.
+                    Defaults to False.
+                use_legacy_pipeline (bool): If True, will use legacy pipeline.
+                    Kept in for legacy reasons. Defaults to False.
+            """
+
             handlerTemplate.HandlerTemplate.__init__(self, key_handler = key_handler, dry_run = dry_run)
 
             self.use_legacy_pipeline = use_legacy_pipeline
@@ -358,14 +366,18 @@ if casa_enabled:
 
         def loop_singledish(
             self,
-            do_all=True,
-            make_directories=True,
+            do_all: bool = True,
+            make_directories: bool = True,
             ):
             """
             Loops over the full set of targets, products, and
             configurations to run the postprocessing. Toggle the parts of
             the loop using the do_XXX booleans. Other choices affect the
             algorithms used.
+
+            Args:
+                do_all (bool): If True, will actually run the singledish pipeline
+                make_directories (bool): If True, will create missing directories
             """
 
             if do_all:

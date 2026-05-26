@@ -48,19 +48,21 @@ if casa_enabled:
     from . import utilsLines as lines
 
     class VisHandler(handlerTemplate.HandlerTemplate):
-        """
-        Class to manipulate calibrated ALMA visibility data (measurement
-        sets), extracting lines, combining multiple data sets, and
-        carrying out other steps in prepration for imaging.
-        """
 
         ############
         # __init__ #
         ############
 
-        def __init__(self, key_handler=None, dry_run=False):
+        def __init__(self,
+                     key_handler=None,
+                     dry_run: bool = False,
+                     ):
             """
+            Class to manipulate calibrated ALMA visibility data (measurement
+            sets), extracting lines, combining multiple data sets, and
+            carrying out other steps in prepration for imaging.
             """
+
             # Can't use super and keep python2/3 agnostic
             handlerTemplate.HandlerTemplate.__init__(
                 self, key_handler=key_handler, dry_run=dry_run)
@@ -73,23 +75,23 @@ if casa_enabled:
 
         def loop_stage_uvdata(
                 self,
-                do_all=False,
-                do_copy=False,
-                do_remove_staging=False,
-                do_custom=False,
-                do_contsub=False,
-                do_extract_line=False,
-                do_extract_cont=False,
-                extra_ext='',
-                make_directories=True,
-                statwt_line=True,
-                statwt_cont=True,
+                do_all: bool = False,
+                do_copy: bool= False,
+                do_remove_staging: bool = False,
+                do_custom: bool= False,
+                do_contsub: bool = False,
+                do_extract_line: bool = False,
+                do_extract_cont: bool = False,
+                extra_ext: str = '',
+                make_directories: bool = True,
+                statwt_line: bool = True,
+                statwt_cont: bool = True,
                 intent=None,
                 timebin=None,
                 just_projects=None,
-                require_full_line_coverage=False,
-                require_full_cont_coverage=False,
-                overwrite=False,
+                require_full_line_coverage: bool = False,
+                require_full_cont_coverage: bool = False,
+                overwrite:bool = False,
                 strict_config=None,
         ):
             """
@@ -113,6 +115,29 @@ if casa_enabled:
             The require_full_line_coverage option sets whether to require a
             measurement set to completely cover a given line's frequency range
             (True) or not (False).
+
+            Args:
+                do_all (bool): Will switch do_copy, do_contsub, do_custom, do_extract_line,
+                    do_extract_cont, and do_remove_staging to True
+                do_copy: If True, will split out the raw data to the staging directory
+                do_remove_staging: If True, will remove the intermediate data after staging
+                do_custom: Not currently used
+                do_contsub: If True, will do continuum subtraction
+                do_extract_line: If True, will extract the line from the dataset
+                do_extract_cont: If True, will extract continuum from the dataset
+                make_directories: If True, will create missing directories
+                statwt_line: If True, will statwt the lines after concatenation
+                statwt_cont: If True, will statwt the continuum after concatenation
+                intent: If set, will only split out datasets with the specified intent (e.g. 'OBSERVE_TARGET#ON_SOURCE')
+                timebin: If set, will apply timebin in the splitting
+                just_projects: If set, will only run on the specified projects (list)
+                require_full_line_coverage: If True, will only run on datasets where an SPW completely contains the line in
+                    question
+                require_full_cont_coverage: If True, will only run on datasets where an SPW completely contains the continuum
+                    frequency range requested
+                overwrite: If True, will overwrite existing staged datasets
+                strict_config: Deprecated. If set, raise an error. Use the "requires" keywords in the
+                    config key file instead.
             """
 
             if strict_config is not None:

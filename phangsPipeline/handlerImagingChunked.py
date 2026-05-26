@@ -41,42 +41,6 @@ if casa_enabled:
     from .utilsSingleDish import get_dish_diameter, prepare_sd_image, move_sd_psf
 
     class ImagingChunkedHandler(handlerTemplate.HandlerTemplate):
-        """
-        Class to makes image cubes out of uv data for imaging a single spectral line.
-
-        Parameters
-        ----------
-        target : str
-            The target name.
-        config : str
-            The configuration name.
-        product : str
-            The product name.
-        key_handler : dict
-            The key handler dictionary.
-        dry_run : bool, optional
-            If True, do not actually make the images. Defaults to False.
-        chunksize : int, optional
-            The number of channels per image cube. Defaults to 10.
-        imaging_method : str, optional
-            The imaging method. Defaults to 'tclean'.
-        recipe : str, optional
-            The recipe. Defaults to 'phangsalma'.
-        set_cell_imsize_on_init : bool, optional
-            If True, set the cell size on initialization. Defaults to True.
-        force_square : bool, optional
-            If True, force the image size to be square. Defaults to False.
-        oversamp : int, optional
-            The oversampling factor of pixels per beam FWHM. Defaults to 5.
-        make_temp_dir : bool, optional
-            If True, make a temporary directory. Defaults to True.
-        temp_key : str, optional
-            The temporary key. Defaults to None.
-        temp_path : str, optional
-            The temporary path. Defaults to None. Set this to specify an independent path for the
-            temporary directory that is unassociated with the default imaging directory.
-
-        """
 
         ############
         # __init__ #
@@ -100,6 +64,41 @@ if casa_enabled:
             temp_path=None,
             copy_ms_to_temp=False,
             ):
+            """
+            Class to makes image cubes out of uv data for imaging a single spectral line.
+
+            Parameters
+            ----------
+            target : str
+                The target name.
+            config : str
+                The configuration name.
+            product : str
+                The product name.
+            key_handler : dict
+                The key handler dictionary.
+            dry_run : bool, optional
+                If True, do not actually make the images. Defaults to False.
+            chunksize : int, optional
+                The number of channels per image cube. Defaults to 10.
+            imaging_method : str, optional
+                The imaging method. Defaults to 'tclean'.
+            recipe : str, optional
+                The recipe. Defaults to 'phangsalma'.
+            set_cell_imsize_on_init : bool, optional
+                If True, set the cell size on initialization. Defaults to True.
+            force_square : bool, optional
+                If True, force the image size to be square. Defaults to False.
+            oversamp : int, optional
+                The oversampling factor of pixels per beam FWHM. Defaults to 5.
+            make_temp_dir : bool, optional
+                If True, make a temporary directory. Defaults to True.
+            temp_key : str, optional
+                The temporary key. Defaults to None.
+            temp_path : str, optional
+                The temporary path. Defaults to None. Set this to specify an independent path for the
+                temporary directory that is unassociated with the default imaging directory.
+            """
 
             # inherit template class
             super().__init__(key_handler = key_handler, dry_run = dry_run)
@@ -338,6 +337,7 @@ if casa_enabled:
 
             The clean convergence is set by the convergence_fracflux and
             convergence_noise_z_threshold parameters.
+
             - convergence_fracflux is the fractional flux threshold between imaging loops.
                 Convergence is reached when the fractional flux change is less than this value.
             - convergence_noise_z_threshold is the noise threshold in z-scores.
@@ -349,8 +349,6 @@ if casa_enabled:
             ----------
             do_all : bool
                 If True, do all steps.
-            imaging_method : str
-                'tclean' or 'sdintimaging'
             do_dirty_image : bool
                 If True, make a dirty image.
             do_revert_to_dirty : bool

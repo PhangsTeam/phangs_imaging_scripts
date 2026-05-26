@@ -1,5 +1,3 @@
-from importlib.metadata import PackageNotFoundError, version
-
 # Ensure CASA is installed
 from .check_imports import is_casa_installed, is_spectral_cube_installed
 

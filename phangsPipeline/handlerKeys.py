@@ -17,16 +17,25 @@ VALID_IMAGING_STAGES = ['dirty', 'multiscale', 'singlescale']
 
 
 class KeyHandler:
-    """
-    Class to handle data files that indicate the names and data sets
-    associated with reducing a large ALMA imaging project.
-    """
 
     def __init__(self,
-                 master_key='key_templates/master_key.txt',
-                 quiet=False,
-                 dochecks=True,
+                 master_key: str = 'key_templates/master_key.txt',
+                 dochecks: bool = True,
                  ):
+        """
+        Class to handle data files that indicate the names and data sets
+        associated with reducing a (generally) ALMA imaging project.
+
+        The KeyHandler generally just gets passed the path to the master key file
+        (which tells the pipeline where to look for other relevant files, imaging recipes
+        etc.), and then will be passed to other handlers for data processing.
+
+        Args:
+            master_key (str, optional): Path to master key file.
+                Defaults to 'key_templates/master_key.txt'.
+            dochecks (bool, optional): Whether to check for missing files.
+                Defaults to True.
+        """
 
         self._dochecks = dochecks
 
