@@ -22,7 +22,6 @@ def prep_sd_for_feather(
     sdfile_out=None,
     interf_file=None,
     do_import=True,
-    do_dropdeg=True,
     do_align=True,
     do_checkunits=True,
     overwrite=False):
@@ -41,11 +40,6 @@ def prep_sd_for_feather(
 
     do_import (default True) : If True and the infile is a FITS file,
     then import the data from FITS.
-
-    do_dropdeg (default True) : if True then pare degenerate axes from
-    the signle dish file. In general this is a good idea for
-    postprocessing, where mixing and matching degenerate axes causes
-    many CASA routines to fail.
 
     do_align (default True) : If True then align the single dish data to the
     astrometric grid of the the interferometer file.
@@ -96,37 +90,7 @@ def prep_sd_for_feather(
                 overwrite=overwrite)
             current_infile = current_outfile
 
-    # Drop degenerate axes using a call to imsubimage
-
-    if do_dropdeg:
-        if current_infile == current_outfile:
-            if os.path.isdir(tempfile_name) or os.path.isfile(tempfile_name):
-                if overwrite:
-                    os.system('rm -rf '+tempfile_name)
-                else:
-                    logger.error("Temp file needed but exists and overwrite=False - "+tempfile_name)
-                    return(None)
-            os.system('cp -r '+current_infile+' '+tempfile_name)
-            current_infile = tempfile_name
-            os.system('rm -rf '+current_outfile)
-
-        if os.path.isdir(current_outfile) or os.path.isfile(current_outfile):
-            if overwrite:
-                os.system('rm -rf '+current_outfile)
-            else:
-                logger.error("Output file needed exists and overwrite=False - "+current_outfile)
-                return(None)
-
-        casaStuff.imsubimage(
-            imagename=current_infile,
-            outfile=current_outfile,
-            overwrite=overwrite,
-            dropdeg=True)
-
-        current_infile = current_outfile
-
     # Align the single dish data to the astrometric grid of the interferometric data
-
     if do_align:
         if current_infile == current_outfile:
             if os.path.isdir(tempfile_name) or os.path.isfile(tempfile_name):
@@ -148,7 +112,25 @@ def prep_sd_for_feather(
             interpolation='cubic',
             overwrite=overwrite)
 
-        current_infile = current_outfile
+    # Get out and match axis orders from interferometric images
+    myia = au.createCasaTool(casaStuff.iatool)
+    myia.open(interf_file)
+    interf_cs = myia.coordsys()
+    myia.close()
+
+    myia = au.createCasaTool(casaStuff.iatool)
+    myia.open(current_outfile)
+    sd_cs = myia.coordsys()
+    myia.close()
+
+    if not sd_cs.names() == interf_cs.names():
+        casaStuff.imtrans(
+            imagename=current_outfile,
+            outfile=current_outfile + ".reorder",
+            order=interf_cs.names(),
+        )
+        os.system("rm -rf "+current_outfile)
+        os.system("mv "+current_outfile+".reorder "+current_outfile)
 
     # Check the units on the singledish file and convert from K to Jy/beam if needed.
 
@@ -422,21 +404,15 @@ def feather_two_cubes(
         myia.adddegaxes(outfile=current_sd_file, stokes='I', overwrite=True)
     myia.close()
 
-    # Call feather, followed by an imsubimage to deal with degenerate
-    # axis stuff.
-
+    # Call feather
     if overwrite:
         os.system('rm -rf '+out_file)
     os.system('rm -rf '+out_file+'.temp')
-    casaStuff.feather(imagename=out_file+'.temp',
+    casaStuff.feather(imagename=out_file,
                  highres=current_interf_file,
                  lowres=current_sd_file,
                  sdfactor=1.0,
                  lowpassfiltersd=False)
-    casaStuff.imsubimage(imagename=out_file+'.temp',
-                    outfile=out_file,
-                    dropdeg=True)
-    os.system('rm -rf '+out_file+'.temp')
 
     # If we apodized, now divide out the common kernel.
 
