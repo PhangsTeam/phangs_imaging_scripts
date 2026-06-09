@@ -1207,7 +1207,11 @@ def mosaic_aligned_data(
                 nchan = cube_shape[2]
                 total = nstokes * nchan
                 logger.info(f'Processing {nstokes} Stokes x {nchan} channels = {total} planes')
-                
+
+                csys_tmp = myia_sum.coordsys()
+                stokes_labels = csys_tmp.stokes()
+                csys_tmp.done()
+
                 counter = 0
                 for istokes in range(nstokes):
                     for ichan in range(nchan):
@@ -1222,7 +1226,7 @@ def mosaic_aligned_data(
                         for idx, im in enumerate(local_imlist):
                             temp_chan = f'temp_ch{ichan}_st{istokes}_img{idx}'
                             casaStuff.imsubimage(imagename=im, outfile=temp_chan,
-                                               chans=str(ichan), stokes=str(istokes), 
+                                               chans=str(ichan), stokes=stokes_labels[istokes],
                                                dropdeg=False)
                             temp_chan_images.append(temp_chan)
                         
