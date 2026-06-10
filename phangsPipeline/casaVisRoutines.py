@@ -1067,13 +1067,26 @@ def suggest_extraction_scheme(
                 logger.warning("Channel too big for SPW "+str(this_spw))
                 continue
 
-            chan_width_list.append(chan_width_kms)
+            # Figure out the binfactor
             this_binfactor = int(np.floor(target_chan_kms/chan_width_kms))
-            binfactor_list.append(this_binfactor)
+            # clamp to nchan if the binfactor exceeds the number of channels in the spw
+            nchan_spw = vm.spwInfo[this_spw]['numChannels']
+            if this_binfactor > nchan_spw:
+                this_binfactor = nchan_spw
 
             # Figure out the total number of channels we should be expecting
             # for this spw
             total_nchan = int(np.floor(vwidth_kms / (chan_width_kms * this_binfactor)))
+
+            # Inflate target slightly above the native chan width TOPO/LSRK
+            # only triggers for cases where desired target channel width is 1 channel and binfactor 
+            # is greater than 1
+            if total_nchan == 1 and this_binfactor > 1:
+                this_binfactor -= 1
+                
+            # record the values for the scheme
+            chan_width_list.append(chan_width_kms)
+            binfactor_list.append(this_binfactor)
             total_nchans.append(total_nchan)
 
             # Record basic file information
@@ -1098,11 +1111,17 @@ def suggest_extraction_scheme(
             scheme[this_infile][this_spw]['chan_width_kms'] = chan_width_kms
             scheme[this_infile][this_spw]['chan_width_ghz'] = chan_width_ghz
 
-    # Get the minimum total number of channels across all SPWs
-    total_nchan = np.nanmin(total_nchans)
-    for this_infile in scheme.keys():
-        for this_spw in scheme[this_infile].keys():
-            scheme[this_infile][this_spw]['total_nchan'] = total_nchan
+    # guard against total_nchans being empty
+    if total_nchans:
+        total_nchan = np.nanmin(total_nchans)
+        for this_infile in scheme.keys():
+            for this_spw in scheme[this_infile].keys():
+                scheme[this_infile][this_spw]['total_nchan'] = total_nchan
+    else:
+        logger.warning(
+            'No SPW satisfies target_chan_kms for the requested range; '
+            'returning empty scheme.'
+        )
 
     # ----------------------------------------------------------------
     # Figure out the strategy
