@@ -138,12 +138,29 @@ anything, e.g., ``BCD+tp`` or ``12m+7m+tp``.
 
 **Parameters:**
 
-- ``interf_config`` : each feather config needs to map back to an
+- ``interf_config``: each feather config needs to map back to an
   interferometric config. This mapping is used to carry out the
   feathering process. This field defines the ``interf_config``
   corresponding to this feather config. When data from that
   ``interf_config`` is feathered it produces data labeled with this
   ``feather_config``.
+
+---------------------
+``singledish_config``
+---------------------
+
+This controls how the singledish data is processed, and is required
+if running the SingleDishPipeline.
+
+**Parameters:**
+
+- ``bl_order``: Baseline order for line fitting. Can probably leave
+  as 1.
+- ``chan_dv_kms``: Velocity resolution for the final cube. This should
+  be set to the resolution you plan to image your interferometric cubes
+  at.
+- ``do_plots``: Whether to produce diagnostic plots during the singledish
+  processing.
 
 =======================
 Example config key file

@@ -32,6 +32,19 @@ as described below.
 - **Column 6:** The file name of a calibrated measurement set. The paths
   are relative to ANY ms_root directory defined in the master key.
 
+.. note::
+
+    If you are using the SingleDishPipeline to process TP data, then
+    the file name is somewhat different. You should point this to the
+    member.uid* directory, i.e. the one that looks like:
+
+    member.uid*/
+        - calibration
+        - log
+        - qa
+        - raw
+        - script
+
 ===================
 Example MS key file
 ===================
