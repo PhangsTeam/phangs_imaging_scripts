@@ -29,7 +29,7 @@ import numpy as np
 from . import handlerTemplate
 from . import utilsFilenames
 from .scConvolution import smooth_cube
-from .scMaskingRoutines import recipe_phangs_strict_mask, recipe_phangs_broad_mask
+from .scMaskingRoutines import recipe_phangs_strict_mask, recipe_phangs_broad_mask, recipe_phangs_flat_mask
 from .scMoments import moment_generator
 from .scNoiseRoutines import recipe_phangs_noise
 from .scStackingRoutines import recipe_phangs_vfield, recipe_shuffle_cube

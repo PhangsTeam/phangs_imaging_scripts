@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed TP crash when different atmospheric correction types are used (#343).
 - Calculation of additional number of channels in regrid mstransform call (#344).
 - Fix stokes passed as integer string to imsubimage in 4D mosaic path (#349).
+- Import recipe_phangs_flat_mask in handlerDerived (#357).
 
 ### Dependencies
 - Bump actions/upload-artifact from 6 to 7 (#313).
