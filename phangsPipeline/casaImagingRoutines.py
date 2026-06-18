@@ -957,6 +957,10 @@ def clean_loop(
         previous_flux = current_flux
         current_flux = model_stats['sum'][0]
 
+        # In some cases, we may want to overwrite forcing a
+        # minimum number of loops
+        force_overwrite_min_loops = False
+
         delta_flux = (current_flux - previous_flux)
         if use_absolute_delta:
             delta_flux = abs(delta_flux)
@@ -967,6 +971,9 @@ def clean_loop(
         # If we don't have any model flux after iter 1, then catch that here
         if np.isnan(frac_delta_flux) and loop > 0:
             frac_delta_flux = 0
+
+            # At this point, doing more loops won't change anything
+            force_overwrite_min_loops = True
 
         # Check whether the model flux convergence criteria is met
 
@@ -985,6 +992,12 @@ def clean_loop(
         if max_total_niter is not None:
             if cumulative_niter >= max_total_niter:
                 proceed = False
+
+        # If there's no change in the flux, then running for more loops
+        # won't do anything
+        if delta_flux == 0:
+            proceed = False
+            force_overwrite_min_loops = True
 
         # If requested, stop if the integrated model flux becomes
         # negative.
@@ -1034,12 +1047,15 @@ def clean_loop(
             noise_conv = None
 
         # Enforce minimum and maximum limits on number of loops. These
-        # override other convergence criteria.
+        # override other convergence criteria in most cases.
 
         if loop >= max_loops:
             proceed = False
         if loop < min_loops:
-            proceed = True
+            if force_overwrite_min_loops:
+                proceed = False
+            else:
+                proceed = True
 
         # Generate a record line and print the current status to the screen
 

@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Refactored logging, and added tests (#338).
 - Updated bespoke sdintimaging task, to align with latest CASA version (#347).
+- If we don't have any model flux, then overwrite minimum number of major cycles (#359).
 
 ### Fixed
 
