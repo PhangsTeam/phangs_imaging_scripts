@@ -14,7 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial test suite, which checks the various CASA tasks and arguments used throughout the pipeline (#324).
 - Initial pip-installable version (#292).
 - Added more detailed instructions for installing analysisUtils (#340).
-- Included initial documentation
+- Included initial documentation (#348).
+- Add badges to README.md (#358).
 
 ### Changed
 

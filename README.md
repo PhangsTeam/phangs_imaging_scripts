@@ -1,5 +1,12 @@
 # The PHANGS-ALMA Pipeline
 
+[![DOI](https://img.shields.io/badge/DOI-10.5281%20%2F%20zenodo.19463214-blue.svg?style=flat-square)](https://doi.org/10.5281/zenodo.19463214)
+![python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2FPhangsTeam%2Fphangs_imaging_scripts%2Fmaster%2Fpyproject.toml&style=flat-square)
+[![build](https://img.shields.io/github/actions/workflow/status/phangsTeam/phangs_imaging_scripts/build.yml?branch=master&style=flat-square)](https://github.com/PhangsTeam/phangs_imaging_scripts/actions/workflows/build.yml)
+[![tests](https://img.shields.io/github/actions/workflow/status/phangsTeam/phangs_imaging_scripts/tests.yml?branch=master&label=tests&style=flat-square)](https://github.com/PhangsTeam/phangs_imaging_scripts/actions/workflows/tests.yml)
+[![readthedocs](https://readthedocs.org/projects/phangs-imaging-scripts/badge/?version=latest&style=flat-square)](https://phangs-imaging-scripts.readthedocs.io/en/latest/?badge=latest)
+[![Codecov](https://img.shields.io/codecov/c/gh/PhangsTeam/phangs_imaging_scripts?style=flat-square)](https://codecov.io/gh/PhangsTeam/phangs_imaging_scripts)
+
 ## Preface
 
 ### Contents
