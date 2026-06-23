@@ -42,4 +42,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump actions/upload-artifact from 6 to 7 (#313).
 - Bump casaplotms requirement from >=2.7.4 to >=2.8.2 (#320).
 - Bump `codecov/codecov-action` from 5 to 7 ([#328](https://github.com/PhangsTeam/phangs_imaging_scripts/pull/328), [#351](https://github.com/PhangsTeam/phangs_imaging_scripts/pull/351))
-- Bump `actions/checkout` from 5 to 6 ([#327](https://github.com/PhangsTeam/phangs_imaging_scripts/pull/327))
+- Bump `actions/checkout` from 5 to 7 ([#327](https://github.com/PhangsTeam/phangs_imaging_scripts/pull/327), [#361](https://github.com/PhangsTeam/phangs_imaging_scripts/pull/361))
