@@ -102,20 +102,27 @@ def check_getchunk_putchunk_memory_issue(
         list_to_return.append(cube_mask)
     if return_shape:
         list_to_return.append(cube_shape)
-    return tuple(list_to_return)
+
+    list_to_return = tuple(list_to_return)
+
+    # If we're only returning one thing, remove
+    # the list for forward-proofing
+    if len(list_to_return) == 1:
+        list_to_return = list_to_return[0]
+
+    return list_to_return
 
 #endregion
 
 #region Copying, scaling, etc.
 
-def copy_dropdeg(
+def copy_importfits(
     infile=None,
     outfile=None,
     overwrite=False
     ):
     """
-    Copy using imsubimage to drop degenerate axes. Optionally handle
-    overwriting and importing from FITS.
+    Copy file, handling overwriting and importing from FITS.
     """
 
     if os.path.isdir(outfile):
@@ -124,7 +131,6 @@ def copy_dropdeg(
             return(False)
         os.system('rm -rf '+outfile)
 
-    used_temp_outfile = False
     if (infile[-4:] == 'FITS') and os.path.isfile(infile):
         logger.info("Importing from FITS.")
         temp_outfile = outfile+'.temp'
@@ -135,24 +141,15 @@ def copy_dropdeg(
             os.system('rm -rf '+temp_outfile)
 
         casaStuff.importfits(fitsimage=infile,
-                   imagename=temp_outfile,
-                   zeroblanks=False,
-                   overwrite=overwrite)
-        used_temp_outfile = True
+                             imagename=outfile,
+                             zeroblanks=False,
+                             overwrite=overwrite,
+                             )
 
-    if used_temp_outfile:
-        casaStuff.imsubimage(
-            imagename=temp_outfile,
-            outfile=outfile,
-            dropdeg=True)
-        os.system('rm -rf '+temp_outfile)
     else:
-        casaStuff.imsubimage(
-            imagename=infile,
-            outfile=outfile,
-            dropdeg=True)
+        os.system("cp -r "+infile+" "+outfile)
 
-    return(True)
+    return True
 
 
 def get_mask(infile, huge_cube_workaround=True):
@@ -236,20 +233,6 @@ def copy_mask(infile, outfile, huge_cube_workaround=True):
     Copy a mask from infile to outfile. Includes a switch for large cubes, where getchunk/putchunk can segfault
     """
 
-    #if huge_cube_workaround:
-    #    os.system('rm -rf ' + outfile + '/mask0')
-    #    os.system('cp -r ' + infile + '/mask0' + ' ' + outfile + '/mask0')
-    #else:
-    #    myia = au.createCasaTool(casaStuff.iatool)
-    #    myia.open(infile)
-    #    mask = myia.getchunk(getmask=True)
-    #    myia.close()
-    #
-    #    myia = au.createCasaTool(casaStuff.iatool)
-    #    myia.open(outfile)
-    #    mask = myia.putregion(pixelmask=mask)
-    #    myia.close()
-
     mask = get_mask(infile)
 
     # use putregion to update pixel mask
@@ -266,8 +249,10 @@ def copy_mask(infile, outfile, huge_cube_workaround=True):
         raise Exception('Error! The infile and outfile have different dimensions! Cannot copy mask.')
 
     has_memory_issue = check_getchunk_putchunk_memory_issue(
-        outfile, myia=myia,
-        huge_cube_workaround=huge_cube_workaround)
+        outfile,
+        myia=myia,
+        huge_cube_workaround=huge_cube_workaround,
+    )
 
     if not has_memory_issue: # getchunk was successful, no memory issue
         myia.putregion(pixelmask=mask)
@@ -557,15 +542,18 @@ def trim_cube(
             return(False)
         bmaj = hdr['restoringbeam']['major']['value']
 
-        pix_per_beam = bmaj*1.0 / pixel_as*1.0
+        pixperbeam = bmaj*1.0 / pixel_as*1.0
 
-        if pix_per_beam > 6:
+        # Calculate the rebinning factor, and rebin if >1
+        rebin_factor = int(np.floor(pixperbeam / min_pixperbeam))
+
+        if rebin_factor > 1:
             casaStuff.imrebin(
                 imagename=infile,
                 outfile=outfile+'.temp',
-                factor=[2,2,1],
+                factor=[rebin_factor, rebin_factor, 1],
                 crop=True,
-                dropdeg=True,
+                dropdeg=False,
                 overwrite=overwrite,
                 )
             just_copy = False
@@ -575,17 +563,6 @@ def trim_cube(
 
     outfile_ext = ".temp"
 
-    # If we don't have the Stokes I axis, add this in
-    if "Stokes" not in hdr["axisnames"]:
-        myia = au.createCasaTool(casaStuff.iatool)
-        myia.open(outfile + '.temp')
-        os.system('rm -rf '+outfile + '.temp_deg')
-        deg_im = myia.adddegaxes(outfile=outfile + '.temp_deg', stokes='I', overwrite=True)
-        deg_im.done()
-        myia.close()
-        outfile_ext = ".temp_deg"
-
-    # This should either be .temp or .temp_deg (check if it works for 2d cases)
     mask = get_mask(outfile + outfile_ext, huge_cube_workaround=True)
 
     # Figure out the extent of the image inside the cube
@@ -617,7 +594,6 @@ def trim_cube(
         )
 
     os.system('rm -rf '+outfile+'.temp')
-    os.system('rm -rf '+outfile+'.temp_deg')
 
     return(True)
 

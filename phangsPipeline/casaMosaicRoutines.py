@@ -219,8 +219,6 @@ def calculate_mosaic_extent(
     # Loop over input files and calculate RA and Dec coordinates of
     # the corners.
 
-    myia = au.createCasaTool(casaStuff.iatool)
-
     for this_infile in infile_list:
 
         this_hdr = casaStuff.imhead(this_infile)
@@ -266,10 +264,10 @@ def calculate_mosaic_extent(
         dec_list.append(trc['coords'][:, 1])
         dec_list.append(brc['coords'][:, 1])
 
-        freq_list.append(blc['coords'][:, 2])
-        freq_list.append(tlc['coords'][:, 2])
-        freq_list.append(trc['coords'][:, 2])
-        freq_list.append(brc['coords'][:, 2])
+        freq_list.append(blc['coords'][:, -1])
+        freq_list.append(tlc['coords'][:, -1])
+        freq_list.append(trc['coords'][:, -1])
+        freq_list.append(brc['coords'][:, -1])
 
     # Get the minimum and maximum RA and Declination.
 
@@ -439,6 +437,11 @@ def build_common_header(
 
     target_hdr = casaStuff.imregrid(template_file, template='get')
 
+    # Get out the spectral key, which can change
+    spec_key = 'spectral2'
+    if spec_key not in target_hdr['csys']:
+        spec_key = 'spectral1'
+
     # Get the pixel scale. This makes some assumptions. We could put a
     # lot of general logic here, but we are usually working in a
     # case where this works.
@@ -457,7 +460,7 @@ def build_common_header(
 
     target_hdr['csys']['direction0']['crval'][0] = ra_ctr_in_rad
     target_hdr['csys']['direction0']['crval'][1] = dec_ctr_in_rad
-    target_hdr['csys']['spectral1']['wcs']['crval'] = freq_ctr
+    target_hdr['csys'][spec_key]['wcs']['crval'] = freq_ctr
 
     # Calculate the size of the image in pixels and set the central
     # pixel coordinate for the RA and Dec axis.
@@ -470,7 +473,7 @@ def build_common_header(
     dec_axis_size = np.ceil(delta_dec / dec_pix_in_as) + 1
     new_dec_ctr_pix = (dec_axis_size + 1)/2.0
 
-    freq_pix_in_hz = np.abs(target_hdr['csys']['spectral1']['wcs']['cdelt'])
+    freq_pix_in_hz = np.abs(target_hdr['csys'][spec_key]['wcs']['cdelt'])
     freq_axis_size = np.ceil(delta_freq / freq_pix_in_hz) + 1
     # +1 or the 1-indexing
     new_freq_ctr_pix = (freq_axis_size + 1) / 2.0
@@ -490,11 +493,12 @@ def build_common_header(
 
     target_hdr['csys']['direction0']['crpix'][0] = new_ra_ctr_pix
     target_hdr['csys']['direction0']['crpix'][1] = new_dec_ctr_pix
-    target_hdr['csys']['spectral1']['wcs']['crpix'] = new_freq_ctr_pix
+    target_hdr['csys'][spec_key]['wcs']['crpix'] = new_freq_ctr_pix
 
     target_hdr['shap'][0] = int(ra_axis_size)
     target_hdr['shap'][1] = int(dec_axis_size)
-    target_hdr['shap'][2] = int(freq_axis_size)
+    target_hdr['shap'][-1] = int(freq_axis_size)
+
     return(target_hdr)
 
 def common_grid_for_mosaic(
@@ -1356,13 +1360,12 @@ def mosaic_aligned_data(
         cur_maskfile = copy.deepcopy(local_maskfile)
     myia.close()
 
-    # Strip out any degenerate axes and create the final output file.
-
+    # Create the final output file.
     casaStuff.imsubimage(imagename=temp_file,
                          outfile=local_outfile,
                          mask='"'+cur_maskfile+'"',
                          overwrite=overwrite,
-                         dropdeg=True,
+                         dropdeg=False,
                          )
 
     # Remove any temp Stokes files we've made along the way

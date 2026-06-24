@@ -11,6 +11,7 @@ should be able to run without CASA enabled (though it won't be able to
 call any of the CASA-specific routines). Right now, just avoid direct
 calls to CASA from this class.
 """
+import copy
 
 import logging
 import os
@@ -379,7 +380,6 @@ if casa_enabled:
                 logger.info(str(target) + " , " + str(product) + " , " + str(config))
                 logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
                 logger.info("")
-                # logger.info("Using ccr.copy_dropdeg.")
                 logger.info("Staging " + outfile)
 
                 # Move the cubes to the postprocess directory, trimming along the way
@@ -387,8 +387,6 @@ if casa_enabled:
                 if not self._dry_run:
                     os.system('rm -rf ' + outdir + outfile)
                     os.system('rm -rf ' + outdir + outfile + ".temp")
-                    os.system('rm -rf ' + outdir + outfile + ".temp_deg")
-                    # os.system('cp -r ' + indir + infile + ' ' + outdir + outfile)
 
                     ccr.trim_cube(
                         infile=indir + infile,
@@ -398,10 +396,6 @@ if casa_enabled:
                         pad=1,
                         rebin=False,
                     )
-                    # ccr.copy_dropdeg(
-                    #     infile=indir+infile,
-                    #     outfile=outdir+outfile,
-                    #     overwrite=True)
 
             # in case of merged datasets with non-identical frequency setups imaged with per-plane beam,
             # some edge channels will have much coarser beam, we trim these edge channels here.
@@ -411,49 +405,6 @@ if casa_enabled:
                     inpbfile=outdir + fname_dict_out['pb'],
                     inplace=True,
                 )
-
-            return ()
-
-        def task_remove_degenerate_axes(
-                self,
-                target=None,
-                product=None,
-                config=None,
-                imaging_method='tclean',
-                extra_ext='',
-                check_files=True,
-        ):
-            """
-            Remove
-            degenerate axes for target, product, config combination in postprocessing directory.
-            """
-
-            # Generate file names
-
-            file_dir = self._kh.get_postprocess_dir_for_target(target)
-            fname_dict = self._fname_dict(target=target, config=config, product=product, extra_ext=extra_ext,
-                                          imaging_method=imaging_method)
-
-            # Copy the primary beam and the interferometric imaging
-
-            logger.info("Dropping degenerate axes from postprocess image/pb files.")
-
-            for this_tag in ['orig', 'pb', 'pbcorr', 'pbcorr_round']:
-
-                file_name = fname_dict[this_tag]
-
-                # Check input file existence
-                if check_files:
-                    if not (os.path.isdir(file_dir + file_name)):
-                        logger.warning("Missing " + file_dir + file_name)
-                        continue
-
-                if not self._dry_run:
-                    ccr.copy_dropdeg(file_dir + file_name, file_dir + file_name + '_nodeg', overwrite=True)
-
-                    os.system('rm -rf ' + file_dir + file_name)
-                    os.system('cp -r ' + file_dir + file_name + '_nodeg ' + file_dir + file_name)
-                    os.system('rm -rf ' + file_dir + file_name + '_nodeg')
 
             return ()
 
@@ -650,7 +601,6 @@ if casa_enabled:
                     sdfile_out=outdir + outfile,
                     interf_file=tempdir + template,
                     do_import=True,
-                    do_dropdeg=True,
                     do_align=True,
                     do_checkunits=True,
                     overwrite=True)
@@ -914,9 +864,10 @@ if casa_enabled:
                     logger.info("Copying from " + interf_weight_file)
                     logger.info("Copying to " + out_weight_file)
                     if not self._dry_run:
-                        ccr.copy_dropdeg(infile=indir + interf_weight_file,
-                                         outfile=outdir + out_weight_file,
-                                         overwrite=True)
+                        ccr.copy_importfits(infile=indir + interf_weight_file,
+                                            outfile=outdir + out_weight_file,
+                                            overwrite=True,
+                                            )
             return ()
 
         def task_rename_sdintimaging(self,
@@ -1576,48 +1527,54 @@ if casa_enabled:
                 return ()
 
             # Call tasks
-
             self.task_stage_interf_data(
-                target=target, config=config, product=product,
+                target=target,
+                config=config,
+                product=product,
                 check_files=check_files,
                 imaging_method=imaging_method,
                 trim_coarse_beam_edge_channels=trim_coarse_beam_edge_channels,
             )
 
             self.task_pbcorr(
-                target=target, config=config, product=product,
+                target=target,
+                config=config,
+                product=product,
                 check_files=check_files,
                 imaging_method=imaging_method
             )
 
             self.task_round_beam(
-                target=target, config=config, product=product,
-                check_files=check_files,
-                imaging_method=imaging_method
-            )
-
-            self.task_remove_degenerate_axes(
-                target=target, config=config, product=product,
+                target=target,
+                config=config,
+                product=product,
                 check_files=check_files,
                 imaging_method=imaging_method
             )
 
             if has_singledish and imaging_method not in ['sdintimaging']:
                 self.task_stage_singledish(
-                    target=target, config=config, product=product,
+                    target=target,
+                    config=config,
+                    product=product,
                     check_files=check_files
                 )
 
             if is_part_of_mosaic:
                 self.task_make_interf_weight(
-                    target=target, config=config, product=product,
-                    check_files=check_files, scale_by_noise=True,
+                    target=target,
+                    config=config,
+                    product=product,
+                    check_files=check_files,
+                    scale_by_noise=True,
                     imaging_method=imaging_method
                 )
 
             if is_part_of_mosaic and has_singledish and imaging_method not in ['sdintimaging']:
                 self.task_make_singledish_weight(
-                    target=target, config=config, product=product,
+                    target=target,
+                    config=config,
+                    product=product,
                     check_files=check_files,
                 )
 
@@ -1895,34 +1852,47 @@ if casa_enabled:
                         self.looper(do_targets=True, do_products=True, do_configs=True):
 
                     has_imaging = False
+                    imaging_method_prep = copy.deepcopy(imaging_method)
+                    fname_imaging_dir = ""
 
                     if imaging_method == 'sdintimaging':
                         fname_dict = self._fname_dict(
-                            target=this_target, product=this_product, config=this_config,
-                            imaging_method=imaging_method)
+                            target=this_target,
+                            product=this_product,
+                            config=this_config,
+                            imaging_method=imaging_method,
+                        )
                         imaging_dir = self._kh.get_imaging_dir_for_target(this_target)
-                        has_imaging = os.path.isdir(imaging_dir + fname_dict['orig'])
+                        fname_imaging_dir = os.path.join(imaging_dir, fname_dict['orig'])
+                        has_imaging = os.path.isdir(fname_imaging_dir)
                         if has_imaging:
                             imaging_method_prep = 'sdintimaging'
 
                     if not has_imaging:
                         fname_dict = self._fname_dict(
-                            target=this_target, product=this_product, config=this_config)
+                            target=this_target,
+                            product=this_product,
+                            config=this_config,
+                        )
                         imaging_dir = self._kh.get_imaging_dir_for_target(this_target)
-                        has_imaging = os.path.isdir(imaging_dir + fname_dict['orig'])
+                        fname_imaging_dir = os.path.join(imaging_dir, fname_dict['orig'])
+                        has_imaging = os.path.isdir(fname_imaging_dir)
                         if has_imaging:
                             imaging_method_prep = 'tclean'
 
                     if not has_imaging:
                         logger.debug("Skipping " + this_target + " because it lacks imaging.")
-                        logger.debug(imaging_dir + fname_dict['orig'])
+                        logger.debug(fname_imaging_dir)
                         continue
 
                     self.recipe_prep_one_target(
-                        target=this_target, product=this_product, config=this_config,
+                        target=this_target,
+                        product=this_product,
+                        config=this_config,
                         check_files=True,
                         trim_coarse_beam_edge_channels=trim_coarse_beam_edge_channels,
-                        imaging_method=imaging_method_prep)
+                        imaging_method=imaging_method_prep,
+                    )
 
             # Feather the interferometer configuration data that has
             # single dish imaging. We'll return to feather mosaicked
@@ -1955,11 +1925,6 @@ if casa_enabled:
                     has_imaging = os.path.isdir(imaging_dir + fname_dict['orig'])
                     has_singledish = self._kh.has_singledish(target=this_target, product=this_product)
 
-                    is_part_of_mosaic = self._kh.is_target_in_mosaic(this_target)
-                    if is_part_of_mosaic and not feather_before_mosaic:
-                        logger.debug("Skipping " + this_target + " because feather_before_mosaic is False.")
-                        continue
-
                     if not has_imaging:
                         logger.debug("Skipping " + this_target + " because it lacks imaging.")
                         logger.debug(imaging_dir + fname_dict['orig'])
@@ -1971,15 +1936,24 @@ if casa_enabled:
 
                     if feather_apod:
                         self.task_feather(
-                            target=this_target, product=this_product, config=this_config,
-                            apodize=True, apod_ext='pb', extra_ext_out='_apod', check_files=True,
+                            target=this_target,
+                            product=this_product,
+                            config=this_config,
+                            apodize=True,
+                            apod_ext='pb',
+                            extra_ext_out='_apod',
+                            check_files=True,
                             copy_weights=True,
                         )
 
                     if feather_noapod:
                         self.task_feather(
-                            target=this_target, product=this_product, config=this_config,
-                            apodize=False, extra_ext_out='', check_files=True,
+                            target=this_target,
+                            product=this_product,
+                            config=this_config,
+                            apodize=False,
+                            extra_ext_out='',
+                            check_files=True,
                             copy_weights=True,
                         )
 
@@ -1994,10 +1968,6 @@ if casa_enabled:
 
                     is_mosaic = self._kh.is_target_linmos(this_target)
                     if not is_mosaic:
-                        continue
-
-                    if feather_before_mosaic:
-                        logger.debug("Skipping " + this_target + " because feather_before_mosaic is True.")
                         continue
 
                     # Mosaic the interferometer data and the
@@ -2022,6 +1992,11 @@ if casa_enabled:
                     if not is_mosaic:
                         continue
 
+                    # Skip if we're not feathering before mosaic
+                    if do_feather and not feather_before_mosaic:
+                        logger.debug("Skipping " + this_target + " because feather_before_mosaic is False.")
+                        continue
+
                     if feather_apod:
                         self.recipe_mosaic_one_target(
                             target=this_target, product=this_product, config=this_config,
@@ -2038,10 +2013,9 @@ if casa_enabled:
                             extra_ext_out='',
                         )
 
-            # This round of feathering targets only mosaicked data. All
-            # other data have been feathered above already.
-
-            if do_feather and feather_before_mosaic:
+            # This round of feathering targets only mosaicked data, and only if we haven't feathered before mosaicking.
+            # All other data have been feathered above already.
+            if do_feather and not feather_before_mosaic:
 
                 # N.B. if using sdintimaging this will just crash out since it hasn't staged any singledish. This is
                 # intended!
@@ -2056,14 +2030,23 @@ if casa_enabled:
 
                     if feather_apod:
                         self.task_feather(
-                            target=this_target, product=this_product, config=this_config,
-                            apodize=True, apod_ext='pb', extra_ext_out='_apod', check_files=True,
+                            target=this_target,
+                            product=this_product,
+                            config=this_config,
+                            apodize=True,
+                            apod_ext='pb',
+                            extra_ext_out='_apod',
+                            check_files=True,
                         )
 
                     if feather_noapod:
                         self.task_feather(
-                            target=this_target, product=this_product, config=this_config,
-                            apodize=False, extra_ext_out='', check_files=True,
+                            target=this_target,
+                            product=this_product,
+                            config=this_config,
+                            apodize=False,
+                            extra_ext_out='',
+                            check_files=True,
                         )
 
             # Trim and downsample the data, convert to Kelvin, etc.
