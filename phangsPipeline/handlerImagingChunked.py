@@ -699,9 +699,11 @@ if casa_enabled:
             elif stage == 'multiscale':
                 clean_call.set_param('deconvolver', 'multiscale')
 
-                # Set the multiscale to use:
-                scales_to_clean = self._kh.get_clean_scales_for_config(config=self.config)
-                clean_call.set_multiscale_arcsec(scales=scales_to_clean)
+                # Set the multiscale scales to use
+                clean_call.set_multiscale_clean_scales(key_handler=self._kh,
+                                                       config=self.config,
+                                                       imaging_method=self.imaging_method,
+                                                       )
 
             elif stage == 'singlescale':
                 clean_call.set_param('deconvolver', 'hogbom')
