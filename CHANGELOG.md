@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added more detailed instructions for installing analysisUtils (#340).
 - Included initial documentation (#348).
 - Add badges to README.md (#358).
+- Add tests for utilsLines, and tidy up formatting (#363).
 
 ### Changed
 
