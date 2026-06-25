@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add support for multiple MSs in singledish pipeline (#365).
 - Added .codecov.yml to configure codecov (#364).
 - Add more control over multiscale clean scales (#362).
+- Add tests for utilsLines, and tidy up formatting (#363).
 
 ### Changed
 
