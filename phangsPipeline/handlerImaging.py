@@ -678,18 +678,25 @@ if casa_enabled:
                 self,
                 clean_call=None,
                 config=None,
+                imaging_method : str='tclean',
         ):
             """
             Look up the appropriate scales for multi-scale clean
             associated with this config.
+
+            Args:
+                imaging_method (str, optional): Either 'tclean'
+                    or 'sdintimaging'. Defaults to 'tclean'.
             """
 
             if clean_call is None:
                 logger.warning("Require a clean_call object. Returning.")
                 return ()
 
-            scales_to_clean = self._kh.get_clean_scales_for_config(config=config)
-            clean_call.set_multiscale_arcsec(scales=scales_to_clean)
+            clean_call.set_multiscale_clean_scales(key_handler=self._kh,
+                                                   config=config,
+                                                   imaging_method=imaging_method,
+                                                   )
 
             return ()
 
@@ -1326,7 +1333,10 @@ if casa_enabled:
 
             # Look up the angular scales to clean for this config
 
-            self.task_assign_multiscales(config=config, clean_call=clean_call)
+            self.task_assign_multiscales(config=config,
+                                         clean_call=clean_call,
+                                         imaging_method=imaging_method,
+                                         )
 
             # Run a multiscale clean until it converges.
 

@@ -121,6 +121,17 @@ well as more complicated joint array combinations (e.g. ``12m+7m``).
   attempt to detect and assign data to arrays on its own.
 - ``clean_scales_arcsec``: These are the scales used for multiscale
   cleaning of data from this array. The units are arcseconds.
+- ``clean_scales_beam``: These are the scales used for multiscale
+  cleaning of data from this array. The units are in terms of the synthesized beam.
+- ``clean_scales_auto``: If True, then the pipeline will automatically
+  determine the scales to use for multiscale cleaning. This is determined as ``[0, 1*beam]``,
+  and then multiplying the largest scale by ``clean_scales_auto_factor`` until
+  ``clean_scales_max_las_fraction`` * largest angular scale in the measurement set is reached.
+  If False, then the user must provide ``clean_scales_arcsec`` and/or ``clean_scales_beam``.
+- ``clean_scales_auto_factor``: Factor to multiply clean scales by, if automatically setting them.
+  Defaults to 2, and cannot be less than 1.
+- ``clean_scales_max_las_fraction``: Maximum fraction of the LAS in the measurement set to consider
+  clean scales up to. Defaults to 1, and cannot be greater than 1.
 - ``requires``: By default, we require ALL
   arrays that make up the configuration, but this can be changed
   to an OR if you only need one of a certain combination, e.g.

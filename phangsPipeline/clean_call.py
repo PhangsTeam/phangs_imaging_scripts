@@ -1,11 +1,15 @@
 """
 This is a dummy CleanCall class for dry run only, or to be inheritted by casaImagingRoutines.CleanCall.
 """
-
+import copy
 import logging
+import os
 import re
 
+import analysisUtils as au
 import numpy as np
+
+from .casaStuff import imhead
 
 logger = logging.getLogger(__name__)
 
@@ -141,23 +145,135 @@ class CleanCall:
             self.clean_params['reffreq']=''
         return()
 
-    def set_multiscale_arcsec(self, scales=[]):
+    def set_multiscale_clean_scales(self,
+                                    key_handler,
+                                    config: str,
+                                    imaging_method: str="tclean",
+                                    ):
         """
-        Set the scales for deconvolution in acseconds. Requires that a
+        Set the scales for deconvolution in arcseconds. Requires that a
         cell size already be defined so that these can be translated
         into pixel units.
+
+        Args:
+            key_handler (handlerTemplate.HandlerTemplate): KeyHandler object
+            config (str): Configuration name
+            imaging_method (str, optional): Should be one of 'tclean', 'sdintimaging'.
+                Defaults to 'tclean'.
         """
         cell_in_pix = self.get_cell_in_arcsec()
         if cell_in_pix is None:
             return()
+
+        clean_scales_auto = key_handler.get_clean_scales_auto_for_config(config)
+        if clean_scales_auto:
+
+            logger.info("Setting clean scales automatically")
+
+            # Get parameters for the automatic clean scale handling
+            clean_scales_auto_factor = key_handler.get_clean_scales_auto_factor_for_config(config)
+            clean_scales_max_las_fraction = key_handler.get_clean_scales_max_las_fraction_for_config(config)
+
+            # Calculate LAS and beam size
+            vis = self.get_param("vis")
+            las = au.estimateMRS(vis)
+            beam = self.estimate_synthesised_beam(imaging_method=imaging_method)
+
+            # Start with scales of 0 and the beam
+            scales = [0, float(beam)]
+
+            # Keep multiplying the scale by the set factor, until we reach the fraction of LAS
+            while scales[-1] < clean_scales_max_las_fraction * las:
+                scale = scales[-1] * clean_scales_auto_factor
+                scales.append(float(scale))
+
+            # Trim off the final scale, since we'll have overshot
+            scales = scales[:-1]
+
+            logger.info("Will use scales (arcsec): "+str(scales))
+
+        else:
+
+            logger.info("Setting clean scales manually:")
+
+            clean_scales_arcsec = key_handler.get_clean_scales_arcsec_for_config(config)
+            if clean_scales_arcsec is None:
+                clean_scales_arcsec = []
+
+            logger.info("clean_scales_arcsec: "+str(clean_scales_arcsec))
+
+            clean_scales_beam = key_handler.get_clean_scales_beam_for_config(config)
+            if clean_scales_beam is None:
+                clean_scales_beam = []
+
+            logger.info("clean_scales_beam: " + str(clean_scales_beam))
+
+            if len(clean_scales_arcsec) + len(clean_scales_beam) == 0:
+                raise ValueError("At least one of clean_scales_arcsec, clean_scales_beam must be defined")
+
+            # If we have beam scales defined, convert to arcsec
+            if len(clean_scales_beam) > 0:
+                beam = self.estimate_synthesised_beam(imaging_method=imaging_method)
+
+                clean_scales_beam = np.asarray(clean_scales_beam) * beam
+
+            # Combine these lists, make sure they're unique
+            scales = list(clean_scales_arcsec) + list(clean_scales_beam)
+            scales = [float(s) for s in np.unique(scales)]
 
         scales_in_pix = []
         for this_scale_arcsec in scales:
             this_scale_pix = this_scale_arcsec/cell_in_pix
             scales_in_pix.append(this_scale_pix)
 
+        # Sort, round, make sure unique
         scales_in_pix.sort()
-        self.clean_params['scales'] = [int(t) for t in scales_in_pix]
+        scales_in_pix = [np.round(t) for t in scales_in_pix]
+        scales_in_pix = [int(s) for s in np.unique(scales_in_pix)]
+
+        self.clean_params['scales'] = copy.deepcopy(scales_in_pix)
+
+        return True
+
+    def estimate_synthesised_beam(
+        self,
+        imaging_method: str = "tclean",
+    ):
+        """Estimate the synthesised beam, either from an existing image or from the visibility data
+
+        Args:
+            imaging_method (str, optional): either 'tclean' or 'sdintimaging'. Defaults to 'tclean'.
+        """
+
+        im_name = self.get_param("imagename")
+
+        # Get out expected image name
+        if imaging_method == "tclean":
+            im = f"{im_name}.image"
+        elif imaging_method == "sdintimaging":
+            im = f"{im_name}.int.cube"
+        else:
+            raise ValueError("Unknown imaging method: " + str(imaging_method))
+
+        # If available, pull from the existing image
+        if os.path.exists(im):
+            
+            logger.info("Getting beam from existing image")
+
+            # Get average of bmaj/bmin
+            bmaj = imhead(imagename=im, mode="get", hdkey="bmaj")
+            bmin = imhead(imagename=im, mode="get", hdkey="bmin")
+            beam = (bmaj["value"] + bmin["value"]) / 2
+
+        # Otherwise, estimate using visibilities
+        else:
+
+            logger.info("Estimating beam from visibilities")
+            
+            vis = self.get_param("vis")
+            beam = au.estimateSynthesizedBeam(vis)
+
+        return beam
 
     def set_round_uvtaper_arcsec(self, taper=0.0):
         """
