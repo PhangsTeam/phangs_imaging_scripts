@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Included initial documentation (#348).
 - Add badges to README.md (#358).
 - Add support for multiple MSs in singledish pipeline (#365).
+- Added .codecov.yml to configure codecov (#364).
 
 ### Changed
 

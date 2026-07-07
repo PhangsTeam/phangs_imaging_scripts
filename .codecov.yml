@@ -1,0 +1,33 @@
+# Don't fail if coverage drops slightly
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 0.1%
+
+# Carry forward any end-to-end flags
+flags:
+  e2e:
+    carryforward: true
+
+# Show carryforward flags and components in the PR comment
+comment:
+  layout: "header, diff, flags, components"
+  show_carryforward_flags: true
+
+# Set up components
+component_management:
+  individual_components:
+    - component_id: "casa"
+      paths:
+        - "phangsPipeline/casa*"
+    - component_id: "handler"
+      paths:
+        - "phangsPipeline/handler*"
+    - component_id: "spectral-cube"
+      paths:
+        - "phangsPipeline/sc*"
+    - component_id: "utils"
+      paths:
+        - "phangsPipeline/utils*"
