@@ -155,11 +155,7 @@ if casa_enabled:
             if fname_dict['sd_file'] == '':
                 logger.info("Target "+target+" product "+product+" has no single dish data in the singledish_key file.")
 
-            if len(fname_dict['sd_raw_data_list']) > 1:
-                logger.warning('Warning! Multiple single dish raw data entries are found in the ms_file_key! We will only process the first one! [TODO]')
-                #<TODO># We can only process one single dish raw data for now. Not sure how to combine those. Unless we specify line_product in the ms_file_key?
-
-            input_raw_data = fname_dict['sd_raw_data_list'][0]
+            input_raw_data = fname_dict['sd_raw_data_list']
 
             # Legacy pipeline doesn't handle multiple line products.
             if self.use_legacy_pipeline:
@@ -237,26 +233,33 @@ if casa_enabled:
                     if key not in product_dict[product]:
                         product_dict[product][key] = parameters[key]
 
+            # copy raw data over. Use a different folder for each MS
+            path_galaxy_root = self._kh.get_singledish_dir_for_target(target=target, changeto=False) + os.sep + 'processing_singledish_'+target + os.sep
 
-            # copy raw data over
-            path_galaxy = self._kh.get_singledish_dir_for_target(target=target, changeto=False) + os.sep + 'processing_singledish_'+target + os.sep
-            path_galaxy = os.path.abspath(path_galaxy) + os.sep
-            input_raw_data = os.path.abspath(input_raw_data) + os.sep
-            if not os.path.isdir(path_galaxy):
-                os.makedirs(path_galaxy)
-            for dir_to_copy in ['calibration', 'raw', 'script', 'qa']:
-                if os.path.isdir(os.path.join(path_galaxy, dir_to_copy)):
-                    input_raw_data_files = glob.glob(os.path.join(input_raw_data, dir_to_copy))
-                    copied_raw_data_files = glob.glob(os.path.join(path_galaxy, dir_to_copy))
-                    if len(input_raw_data_files) > len(copied_raw_data_files):
-                        logger.info("  cleaning up: "+str(os.path.join(path_galaxy, dir_to_copy)))
-                        shutil.rmtree(glob.glob(os.path.join(path_galaxy, dir_to_copy)))
-                if not os.path.isdir(os.path.join(path_galaxy, dir_to_copy)):
-                    logger.info("  copying raw data: "+str(os.path.join(input_raw_data, dir_to_copy)))
-                    logger.info("  to processing dir: "+str(os.path.join(path_galaxy, dir_to_copy)))
-                    shutil.copytree(os.path.join(input_raw_data, dir_to_copy), \
-                                    os.path.join(path_galaxy, dir_to_copy))
+            ms_dirs = []
 
+            for ird in input_raw_data:
+
+                ms_dir = str(os.path.basename(ird))
+                ms_dirs.append(ms_dir)
+
+                path_galaxy = os.path.join(str(os.path.abspath(path_galaxy_root)), ms_dir) + os.sep
+                input_raw_data = os.path.abspath(ird) + os.sep
+
+                if not os.path.isdir(path_galaxy):
+                    os.makedirs(path_galaxy)
+                for dir_to_copy in ['calibration', 'raw', 'script', 'qa']:
+                    if os.path.isdir(os.path.join(path_galaxy, dir_to_copy)):
+                        input_raw_data_files = glob.glob(os.path.join(input_raw_data, dir_to_copy))
+                        copied_raw_data_files = glob.glob(os.path.join(path_galaxy, dir_to_copy))
+                        if len(input_raw_data_files) > len(copied_raw_data_files):
+                            logger.info("  cleaning up: "+str(os.path.join(path_galaxy, dir_to_copy)))
+                            shutil.rmtree(glob.glob(os.path.join(path_galaxy, dir_to_copy)))
+                    if not os.path.isdir(os.path.join(path_galaxy, dir_to_copy)):
+                        logger.info("  copying raw data: "+str(os.path.join(input_raw_data, dir_to_copy)))
+                        logger.info("  to processing dir: "+str(os.path.join(path_galaxy, dir_to_copy)))
+                        shutil.copytree(os.path.join(input_raw_data, dir_to_copy), \
+                                        os.path.join(path_galaxy, dir_to_copy))
 
             if self.use_legacy_pipeline:
                 logger.info("  Using legacy pipeline")
@@ -270,7 +273,8 @@ if casa_enabled:
                 vhigh1 = product_dict[product]['vel_line_mask'][1]
 
                 kwargs = {}
-                kwargs['path_galaxy'] = path_galaxy                            #
+                kwargs['path_galaxy'] = path_galaxy_root                       #
+                kwargs['ms_dirs'] = ms_dirs
                 kwargs['flag_file']  = ''                                      #
                 kwargs['doplots']    = False                                    # Do non-interactive. additional plots (plots will be saved in "calibration/plots" folder)
                 kwargs['bl_order']   = 1                                       # Order for the baseline fitting
@@ -304,7 +308,8 @@ if casa_enabled:
             else:
                 # Run the modified version of the ALMA pipeline w/ custom imaging routine
 
-                sdalma.runALMAPipeline(path_galaxy=path_galaxy,
+                sdalma.runALMAPipeline(path_galaxy=path_galaxy_root,
+                                       ms_dirs=ms_dirs,
                                        in_source=fname_dict['source'][0],
                                        baseline_fit_func='poly',
                                        baseline_fit_order=parameters['bl_order'] if 'bl_order' in parameters else 1,

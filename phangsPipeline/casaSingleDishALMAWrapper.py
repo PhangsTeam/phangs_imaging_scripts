@@ -4,7 +4,6 @@ import os
 import shutil
 import tarfile
 
-import analysisUtils as au
 import astropy.units as u
 import numpy as np
 from astropy.table import Table
@@ -16,9 +15,10 @@ from .utilsSingleDish import getTPSampling
 logger = logging.getLogger(__name__)
 
 # path constants
-path_calibration = '../calibration/'
+PATH_RAW = '../raw/'
+PATH_CALIBRATION = '../calibration/'
 
-def extractJyperK(base_path=path_calibration):
+def extractJyperK(base_path=PATH_CALIBRATION):
     logger.info("Extracting Jy per K conversion factor")
 
     file_script = f'{base_path}/jyperk.csv'
@@ -160,6 +160,7 @@ def SDImaging(filename,
     return outimage
 
 def runALMAPipeline(path_galaxy,
+                    ms_dirs: list | None = None,
                     in_source='all',
                     baseline_fit_func='poly',
                     baseline_fit_order=1,
@@ -175,21 +176,30 @@ def runALMAPipeline(path_galaxy,
     ----------
     path_galaxy : str
         Path to the galaxy folder.
+    ms_dirs : list
+        List of individual MSs
     baseline_fit_func : str
         Baseline fit function.
     baseline_fit_order : int
         Baseline fit order.
     baseline_linewindowmode : str
         Baseline line window mode.
-    baseline_linewindow : dict or list
+    baseline_linewindow : dict or list or None
         Dictionary of baseline line windows. e.g. {"23": ['230.62GHz', '230.78GHz']}
         or List of channel/frequency ranges. e.g. [[230.62e0, 230.78e9]]
+        or None, which will calculate automatically
     product_dict : dict
         Dictionary of line products information.
     overwrite : bool
         Overwrite previous results.
 
     '''
+
+    if ms_dirs is None:
+        ms_dirs = []
+    if len(ms_dirs) == 0:
+        logger.error("No input MSs folder provided.")
+        return
 
     from pipeline.cli import (h_init,
                               hsd_importdata,
@@ -203,98 +213,130 @@ def runALMAPipeline(path_galaxy,
                               hsd_baseline,
                               hsd_blflag,
                               h_save)
+    
+    all_eb_names = []
 
-    # Change to working directory:
-    workdir = os.path.join(path_galaxy, 'raw')
-    logger.info(f"> Changing directory to {workdir}")
-    os.chdir(workdir)
-
-    # Defining Execution Blocks (EBS) names
-    EBsnames = [f for f in os.listdir(".") if f.startswith('uid_')]
-
-    if len(EBsnames) == 0:
-        logger.info("No ASDM files found.")
-        raise ValueError("No ASDM files found.")
-
-    # Retrieve the k2jy scaling from the auxiliary calibration products.
-    extractJyperK()
-
-    # Extract MS names from the JyperK table
-    jyperk_tab = Table.read("jyperk.csv")
-    jyperk_ebs = np.unique(jyperk_tab["MS"])
-    jyperk_ebs = [str(x.split(".ms")[0]) for x in jyperk_ebs]
-
-    # Drop the '.asdm.sdm' extension. This matches with the naming in the JyperK file
-    # and the format in the provided pipeline script.
-    newEBnames = []
-    for EBname in EBsnames:
-        newEBname = EBname.split('.asdm.sdm')[0]
-
-        # Only take EBs that have an entry in the JyperK table
-        if newEBname in jyperk_ebs:
-            os.rename(EBname, newEBname)
-
-            newEBnames.append(newEBname)
-
-        else:
-            logger.warning(f"{newEBname} not found in jyperk.csv. Will not process")
-
-    EBsnames = newEBnames
-
-    logger.info(f"Using these ASDM files: {EBsnames}")
-
-    # Create baseline dict with freq ranges to mask:
+    # Create baseline dict with freq ranges to mask
     if baseline_linewindow is None:
-
         # Construct the line window via spw:low~high strings based on the
         # product_dict.
         baseline_linewindow = []
         for this_product in product_dict:
-
-            freq_rest = product_dict[this_product]['freq_rest_MHz']
-            vsys = product_dict[this_product]['vsys']
-            vel_line_mask = product_dict[this_product]['vel_line_mask']
+            freq_rest = product_dict[this_product]["freq_rest_MHz"]
+            vel_line_mask = product_dict[this_product]["vel_line_mask"]
 
             # Convert velocity range to frequency range
-            freq_line_mask = (vel_line_mask * u.km / u.s).to(u.Hz, u.doppler_radio(freq_rest * u.MHz)).value
+            freq_line_mask = (
+                (vel_line_mask * u.km / u.s).to(u.Hz, u.doppler_radio(freq_rest * u.MHz)).value
+            )
 
             # Giving list of [low, high] frequency ranges. The pipeline will apply the ranges to all valid SPWs.
             # NOTE: the pipeline internally checks the low/high order and correctly applies the range regardless of order.
             baseline_linewindow.append(list(freq_line_mask))
 
             # Append this to the product dict
-            product_dict[this_product]['freq_line_mask'] = freq_line_mask
+            product_dict[this_product]["freq_line_mask"] = freq_line_mask
 
-    # Run pipeline recipe.
-    context = h_init()
-    try:
-        hsd_importdata(vis=EBsnames)
+    init_dir = os.getcwd()
 
-        hsd_flagdata(pipelinemode="automatic")
-        h_tsyscal(pipelinemode="automatic")
-        hsd_tsysflag(pipelinemode="automatic")
-        hsd_skycal(pipelinemode="automatic")
-        hsd_k2jycal(dbservice=False)
-        hsd_applycal(pipelinemode="automatic")
-        hsd_atmcor(pipelinemode="automatic")
+    # Start looping over MS directories
+    for ms_dir in ms_dirs:
 
-        # NOTE: single baseline fit only. The pipeline repeats after 1 flagging step.
-        # May need to revisit if flagging is missed.
-        hsd_baseline(pipelinemode="automatic",
-                     fitfunc=baseline_fit_func,
-                     fitorder=baseline_fit_order,
-                     linewindowmode=baseline_linewindowmode,
-                     linewindow=baseline_linewindow
-                     )
-        hsd_blflag(pipelinemode="automatic")
+        # Change to working directory. This is 'calibrated', to sync up with scriptForPI and to make
+        # rerunning cleaner
+        ms_workdir = os.path.join(ms_dir, 'calibrated')
+        workdir = os.path.join(path_galaxy, ms_workdir)
+
+        # If we already have this directory, then clear out to avoid rerunning calibration
+        if os.path.exists(workdir):
+            logger.warning(f"Directory {workdir} already exists. Will delete")
+            shutil.rmtree(workdir)
+
+        if not os.path.exists(workdir):
+            os.makedirs(workdir)
+
+        logger.info(f"> Changing directory to {workdir}")
+        os.chdir(workdir)
+
+        # Defining Execution Blocks (EBS) names
+        eb_names = [f for f in os.listdir(PATH_RAW) if f.startswith('uid_')]
+
+        if len(eb_names) == 0:
+            logger.info("No ASDM files found.")
+            raise ValueError("No ASDM files found.")
+
+        # Retrieve the k2jy scaling from the auxiliary calibration products.
+        extractJyperK()
+
+        # Extract MS names from the JyperK table
+        jyperk_tab = Table.read("jyperk.csv")
+        jyperk_ebs = np.unique(jyperk_tab["MS"])
+        jyperk_ebs = [str(x.split(".ms")[0]) for x in jyperk_ebs]
+
+        # Drop the '.asdm.sdm' extension. This matches with the naming in the JyperK file
+        # and the format in the provided pipeline script.
+        logger.info("Moving EBs to calibrated/ directory")
+
+        new_eb_names = []
+        for eb_name in eb_names:
+            new_eb_name = eb_name.split('.asdm.sdm')[0]
+
+            # Only take EBs that have an entry in the JyperK table.
+            # Copy to calibrated directory
+            if new_eb_name in jyperk_ebs:
+                if not os.path.exists(new_eb_name):
+                    logger.debug(f"Copying {eb_name} to calibrated/{new_eb_name}")
+
+                    # FIXME: Note that we could potentially use soft/hardlinks here, to save some
+                    #  space
+                    shutil.copytree(os.path.join(PATH_RAW, eb_name), new_eb_name)
+
+                else:
+                    logger.debug(f"calibrated/{eb_name} already exists")
+
+                new_eb_names.append(new_eb_name)
+
+            else:
+                logger.warning(f"{new_eb_name} not found in jyperk.csv. Will not process")
+
+        eb_names = new_eb_names
+        all_eb_names.extend([os.path.join(ms_workdir, eb_name) for eb_name in eb_names])
+
+        logger.info(f"Using these ASDM files: {eb_names}")
+
+        # Run pipeline recipe.
+        context = h_init()
+        try:
+            hsd_importdata(vis=eb_names)
+
+            hsd_flagdata(pipelinemode="automatic")
+            h_tsyscal(pipelinemode="automatic")
+            hsd_tsysflag(pipelinemode="automatic")
+            hsd_skycal(pipelinemode="automatic")
+            hsd_k2jycal(dbservice=False)
+            hsd_applycal(pipelinemode="automatic")
+            hsd_atmcor(pipelinemode="automatic")
+
+            # NOTE: single baseline fit only. The pipeline repeats after 1 flagging step.
+            # May need to revisit if flagging is missed.
+            hsd_baseline(pipelinemode="automatic",
+                         fitfunc=baseline_fit_func,
+                         fitorder=baseline_fit_order,
+                         linewindowmode=baseline_linewindowmode,
+                         linewindow=baseline_linewindow,
+                         )
+            hsd_blflag(pipelinemode="automatic")
 
 
-    finally:
-        h_save()
+        finally:
+            h_save()
+
+    # Move back to the overall galaxy path
+    os.chdir(path_galaxy)
 
     # Find baselined files
     this_vis = []
-    for filename in EBsnames:
+    for filename in all_eb_names:
 
         filename_pattern = f"{filename}.ms.atmcor.atmtype*_bl"
 
@@ -336,7 +378,6 @@ def runALMAPipeline(path_galaxy,
 
     for this_product in product_dict:
 
-
         name_line = product_dict[this_product]['name_line']
         chan_dv_kms = product_dict[this_product]['chan_dv_kms']
         freq_rest_GHz = product_dict[this_product]['freq_rest_MHz'] / 1.e3
@@ -371,5 +412,7 @@ def runALMAPipeline(path_galaxy,
         weight_output_file = output_file.replace(".fits", '_weight.fits')
         shutil.copy2(weightimage_fits, weight_output_file)
 
-        logger.info('> Copied FITS to "%s"'%(output_file))
-        logger.info('> Copied FITS to "%s"'%(weight_output_file))
+        logger.info(f"> Copied image to {output_file}")
+        logger.info(f"> Copied weight to {weight_output_file}")
+
+    os.chdir(init_dir)
