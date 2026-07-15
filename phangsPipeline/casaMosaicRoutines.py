@@ -1134,6 +1134,8 @@ def mosaic_aligned_data(
     local_outfile = os.path.basename(outfile)
     local_maskfile = os.path.basename(mask_file)
 
+    ndim = len(cube_shape)
+
     if not has_memory_issue:
         # Original approach for smaller cubes
         casaStuff.immath(imagename = local_imlist, mode='evalexpr',
@@ -1157,8 +1159,6 @@ def mosaic_aligned_data(
         myia_weight = au.createCasaTool(casaStuff.iatool)
         myia_sum.open(sum_file)
         myia_weight.open(weight_file)
-        
-        ndim = len(cube_shape)
         
         try:
             if ndim == 3:
@@ -1207,14 +1207,20 @@ def mosaic_aligned_data(
                         os.system('rm -rf ' + temp)
                         
             elif ndim == 4:
-                nstokes = cube_shape[3]
-                nchan = cube_shape[2]
-                total = nstokes * nchan
-                logger.info(f'Processing {nstokes} Stokes x {nchan} channels = {total} planes')
 
+                # The spectral/Stokes axis may be flipped. Keep track of this
                 csys_tmp = myia_sum.coordsys()
+                specaxis = csys_tmp.axiscoordinatetypes().index('Spectral')
+                stokesaxis = csys_tmp.axiscoordinatetypes().index('Stokes')
                 stokes_labels = csys_tmp.stokes()
                 csys_tmp.done()
+
+                nchan = cube_shape[specaxis]
+                nstokes = cube_shape[stokesaxis]
+                blc = [0, 0, 0, 0]
+
+                total = nstokes * nchan
+                logger.info(f'Processing {nstokes} Stokes x {nchan} channels = {total} planes')
 
                 counter = 0
                 for istokes in range(nstokes):
@@ -1223,15 +1229,20 @@ def mosaic_aligned_data(
                         if counter % 10 == 0:
                             logger.info(f'Processing plane {counter}/{total}')
                         
-                        blc = [0, 0, ichan, istokes]
+                        blc[specaxis] = ichan
+                        blc[stokesaxis] = istokes
                         
                         # Extract channel/stokes slices
                         temp_chan_images = []
                         for idx, im in enumerate(local_imlist):
                             temp_chan = f'temp_ch{ichan}_st{istokes}_img{idx}'
-                            casaStuff.imsubimage(imagename=im, outfile=temp_chan,
-                                               chans=str(ichan), stokes=stokes_labels[istokes],
-                                               dropdeg=False)
+                            casaStuff.imsubimage(
+                                imagename=im,
+                                outfile=temp_chan,
+                                chans=str(ichan),
+                                stokes=stokes_labels[istokes],
+                                dropdeg=False,
+                            )
                             temp_chan_images.append(temp_chan)
                         
                         # Process sum
@@ -1327,10 +1338,30 @@ def mosaic_aligned_data(
                     myia_mask.putchunk(mask_slice, blc)
                     
             elif ndim == 4:
+
+                # The spectral/Stokes axis may be flipped. Keep track of this
+                myia_sum.open(sum_file)
+                csys_tmp = myia_sum.coordsys()
+                specaxis = csys_tmp.axiscoordinatetypes().index('Spectral')
+                stokesaxis = csys_tmp.axiscoordinatetypes().index('Stokes')
+                csys_tmp.done()
+
+                myia_sum.close()
+
+                nchan = cube_shape[specaxis]
+                nstokes = cube_shape[stokesaxis]
+
+                blc = [0, 0, 0, 0]
+                trc = [cube_shape[0]-1, cube_shape[1]-1, 0, 0]
+
                 for istokes in range(nstokes):
                     for ichan in range(nchan):
-                        blc = [0, 0, ichan, istokes]
-                        trc = [cube_shape[0]-1, cube_shape[1]-1, ichan, istokes]
+
+                        blc[specaxis] = ichan
+                        blc[stokesaxis] = istokes
+
+                        trc[specaxis] = ichan
+                        trc[stokesaxis] = istokes
                         
                         myia_sum.open(sum_file)
                         sum_slice = myia_sum.getchunk(blc, trc)
