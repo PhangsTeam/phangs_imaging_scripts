@@ -47,3 +47,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump `codecov/codecov-action` from 5 to 7 ([#328](https://github.com/PhangsTeam/phangs_imaging_scripts/pull/328), [#351](https://github.com/PhangsTeam/phangs_imaging_scripts/pull/351))
 - Bump `actions/checkout` from 5 to 7 ([#327](https://github.com/PhangsTeam/phangs_imaging_scripts/pull/327), [#361](https://github.com/PhangsTeam/phangs_imaging_scripts/pull/361))
 - Bump `actions/setup-python` from 6 to 7 ([#367](https://github.com/PhangsTeam/phangs_imaging_scripts/pull/367))
+- Bump `tarides/changelog-check-action` from 3 to 4 ([#368](https://github.com/PhangsTeam/phangs_imaging_scripts/pull/368))
