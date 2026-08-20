@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add tests for utilsLines, and tidy up formatting (#363).
 - Added spectral-cube equivalent routines for postprocessing (#371).
 - Add tests for scMoments, and tidy up formatting (#389).
+- Speed up sdintimaging by replacing feather with custom uvcombine tasks (#376).
 
 ### Changed
 
@@ -29,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated bespoke sdintimaging task, to align with latest CASA version (#347).
 - If we don't have any model flux, then overwrite minimum number of major cycles (#359).
 - Keep all 4 axes throughout postprocessing, to avoid slowdowns with re-adding degenerate axes (#353).
+- Speed up sdintimaging by removing unneeded repeated slow operations (#376).
 
 ### Fixed
 

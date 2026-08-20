@@ -23,6 +23,8 @@ from casatools import table
 from casatasks import imstat
 from casatools import synthesisimager,synthesisutils
 
+from .utilsSDIntImaging import feather_int_sd, feather_residual
+
 try:
     from casampi.MPIEnvironment import MPIEnvironment
     from casampi import MPIInterface
@@ -117,7 +119,12 @@ def setup_imager(imagename, specmode,calcres,calpsf,inparams):
 
     return imagertool
 
-def setup_deconvolver(imagename,specmode,inparams):
+def setup_deconvolver(imagename,
+                      specmode,
+                      calcpsf,
+                      calcres,
+                      inparams,
+                      ):
     """
     Cube or MFS minor cycles. 
     """
@@ -130,20 +137,28 @@ def setup_deconvolver(imagename,specmode,inparams):
     deconvolvertool.initializeNormalizers()
     deconvolvertool.setWeighting()
 
+    ### These three should be unncessary.  Need a 'makeimage' method for csys generation.
+    if calcpsf:
+        deconvolvertool.makePSF()  ## Make this to get a coordinate system
+        #deconvolvertool.makeImage('psf', imagename+'.psf')
+        deconvolvertool.makePB()  ## Make this to turn .weight into .pb maps
 
-    ### These three should be unncessary.  Need a 'makeimage' method for csys generation. 
-    deconvolvertool.makePSF() ## Make this to get a coordinate system
-    #deconvolvertool.makeImage('psf', imagename+'.psf')
-    deconvolvertool.makePB()  ## Make this to turn .weight into .pb maps
-
-        ## Initialize deconvolvers. ( Order is important. This cleans up a leftover tablecache image.... FIX!)
+    ## Initialize deconvolvers. ( Order is important. This cleans up a leftover tablecache image.... FIX!)
     deconvolvertool.initializeDeconvolvers()
     deconvolvertool.initializeIterationControl() # This needs to be run before runMajorCycle
-    deconvolvertool.runMajorCycle(isCleanCycle=False) ## Make this to make template residual images.
+
+    if calcres:
+        deconvolvertool.runMajorCycle(isCleanCycle=False) ## Make this to make template residual images.
  
     return deconvolvertool
 
-def setup_sdimaging(template='',output='', inparms=None, sdparms=None):
+def setup_sdimaging(template='',
+                    output='',
+                    calcpsf=True,
+                    calcres=True,
+                    inparms=None,
+                    sdparms=None,
+                    ):
     """
     Make the SD cube Image and PSF
 
@@ -165,28 +180,30 @@ def setup_sdimaging(template='',output='', inparms=None, sdparms=None):
         raise RuntimeError("Internal Error: missing sdimage parameter") 
     if 'pblimit' in inparms:
         pblimit = inparms['pblimit']
+        
+    if calcres:
+        ## Regrid the input SD image to the target coordinate system.
+        sdintlib.regridimage(imagename=sdimage, template=template+'.residual', outfile=output+'.residual')
+        sdintlib.regridimage(imagename=sdimage, template=template+'.residual', outfile=output+'.image')
+    
+        ## Apply the pbmask from the INT image cube, to the SD cubes.
+        #TTB: Create *.mask cube  
+    
+        sdintlib.addmask(inpimage=output+'.residual', pbimage=template+'.pb', pblimit=pblimit)
+        sdintlib.addmask(inpimage=output+'.image', pbimage=template+'.pb', pblimit=pblimit)
 
-    if sdpsf !="":
-        ## check the coordinates of psf with int psf
-        sdintlib.checkpsf(sdpsf, template+'.psf') 
-
-    ## Regrid the input SD image and PSF cubes to the target coordinate system. 
-    sdintlib.regridimage(imagename=sdimage, template=template+'.residual', outfile=output+'.residual')
-    sdintlib.regridimage(imagename=sdimage, template=template+'.residual', outfile=output+'.image')
-
-    if sdpsf !="":
-        sdintlib.regridimage(imagename=sdpsf, template=template+'.psf', outfile=output+'.psf')
-    else:
-        ## Make an internal sdpsf image if the user has not supplied one. 
-        casalog.post("Constructing a SD PSF cube by evaluating Gaussians based on the restoring beam information in the regridded SD Image Cube")
-        sdintlib.create_sd_psf(sdimage=output+'.residual', sdpsfname=output+'.psf')
-
-    ## Apply the pbmask from the INT image cube, to the SD cubes.
-    #TTB: Create *.mask cube  
-
-    sdintlib.addmask(inpimage=output+'.residual', pbimage=template+'.pb', pblimit=pblimit)
-    sdintlib.addmask(inpimage=output+'.image', pbimage=template+'.pb', pblimit=pblimit)
-
+    if calcpsf:
+        if sdpsf != "":
+            ## check the coordinates of psf with int psf
+            sdintlib.checkpsf(sdpsf, template + ".psf")
+        if sdpsf !="":
+            ## Regrid the input PSF cube to the target coordinate system.
+            sdintlib.regridimage(imagename=sdpsf, template=template+'.psf', outfile=output+'.psf')
+        else:
+            ## Make an internal sdpsf image if the user has not supplied one.
+            casalog.post("Constructing a SD PSF cube by evaluating Gaussians based on the restoring beam information in the regridded SD Image Cube")
+            sdintlib.create_sd_psf(sdimage=output+'.residual', sdpsfname=output+'.psf')
+    
     sdintlib.deleteTmpFiles()
 
 
@@ -542,8 +559,12 @@ def sdintimaging(
         ## Init major cycle elements
         casalog.post("INT cube setup ....")
         t0=time.time();
-        imager=setup_imager(int_cube, specmode, calcres, calcpsf, bparm) 
-        mysdintlib.copy_restoringbeam(fromthis=int_cube+'.psf', tothis=int_cube+'.residual')
+        imager=setup_imager(int_cube, specmode, calcres, calcpsf, bparm)
+
+        # Copy the restoring beam from the PSF to the residual image. Only needed when setting up
+        # residual
+        if calcres:
+            mysdintlib.copy_restoringbeam(fromthis=int_cube+'.psf', tothis=int_cube+'.residual')
 
         t1=time.time();
         casalog.post("***Time for initializing imager (INT cube) : "+"%.2f"%(t1-t0)+" sec", "INFO3", "task_sdintimaging");
@@ -552,7 +573,7 @@ def sdintimaging(
         if niter>0 or restoration==True:
             casalog.post("Combined image setup ....")
             t0=time.time();
-            deconvolvertool=setup_deconvolver(decname, specmode, bparm )
+            deconvolvertool=setup_deconvolver(decname, specmode, calcpsf, calcres, bparm)
 
             t1=time.time();
             casalog.post("***Time for seting up deconvolver(s): "+"%.2f"%(t1-t0)+" sec", "INFO3", "task_sdintimaging");
@@ -560,7 +581,13 @@ def sdintimaging(
         if usedata!='int':
             ### debug (remove it later) 
             casalog.post("SD cube setup ....")
-            setup_sdimaging(template=int_cube, output=sd_cube, inparms=bparm, sdparms=sdparms ) 
+            setup_sdimaging(template=int_cube,
+                            output=sd_cube,
+                            calcpsf=calcpsf,
+                            calcres=calcres,
+                            inparms=bparm,
+                            sdparms=sdparms,
+                            )
             
 
         ####now is the time to check estimated memory
@@ -588,19 +615,30 @@ def sdintimaging(
             return
 
         #### SDINT specific feathering....
-        ## Feather INT and SD residual images (feather in flat-sky. output has common PB)
-        casalog.post("Feathering INT and SD residual images...")
-        mysdintlib.feather_residual(int_cube, sd_cube, joint_cube, applypb, inpparams)
-        mysdintlib.feather_int_sd(sdcube=sd_cube+'.psf',
-                                  intcube=int_cube+'.psf',
-                                  jointcube=joint_cube+'.psf',
-                                  sdgain=sdgain,
-                                  dishdia=dishdia,
-                                  usedata=usedata,
-                                  chanwt = inpparams['chanwt'])
 
-        #print("Fitting for cube")
-        synu.fitPsfBeam(joint_cube)
+        if calcres:
+            ## Feather INT and SD residual images (feather in flat-sky. output has common PB)
+            casalog.post("Feathering INT and SD residual images...")
+            
+            feather_residual(
+                int_cube=int_cube,
+                sd_cube=sd_cube,
+                joint_cube=joint_cube,
+                applypb=applypb,
+                inparm=inpparams,
+                mysdintlib=mysdintlib,
+            )
+        
+        if calcpsf:
+            feather_int_sd(
+                sdcube=f"{sd_cube}.psf",
+                intcube=f"{int_cube}.psf",
+                jointcube=f"{joint_cube}.psf",
+                sdgain=sdgain,
+                usedata=usedata,
+            )
+            #print("Fitting for cube")
+            synu.fitPsfBeam(joint_cube)
 
         ###############
         ##### Placeholder code for PSF renormalization if needed
@@ -614,26 +652,30 @@ def sdintimaging(
  
         if specmode=='mfs':
             ## Calculate Spectral PSFs and Taylor Residuals
-            casalog.post("Calculate spectral PSFs and Taylor Residuals...")
-            mysdintlib.cube_to_taylor_sum(cubename=joint_cube+'.psf',
-                                        cubewt=int_cube+'.sumwt',
-                                        chanwt=inpparams['chanwt'],
-                                        mtname=joint_multiterm+'.psf',
-                                        nterms=nterms, reffreq=inpparams['reffreq'], dopsf=True)
-            mysdintlib.cube_to_taylor_sum(cubename=joint_cube+'.residual',
-                                        cubewt=int_cube+'.sumwt',
-                                        chanwt=inpparams['chanwt'],
-                                        mtname=joint_multiterm+'.residual',
-                                        nterms=nterms, reffreq=inpparams['reffreq'], dopsf=False)
 
-            #print("Fit for multiterm")
-            if(deconvolver=='mtmfs' and nterms==1): # work around file naming issue
-                os.system('rm -rf '+joint_multiterm+'tmp.psf')
-                os.system('ln -sf '+joint_multiterm+'.psf.tt0 '+joint_multiterm+'tmp.psf')
-                synu.fitPsfBeam(joint_multiterm+'tmp',nterms=nterms)
-                os.system('rm -rf '+joint_multiterm+'tmp.psf')
-            else:
-                synu.fitPsfBeam(joint_multiterm,nterms=nterms)
+            if calcpsf:
+                casalog.post("Calculate spectral PSFs and Taylor Residuals...")
+                mysdintlib.cube_to_taylor_sum(cubename=joint_cube+'.psf',
+                                            cubewt=int_cube+'.sumwt',
+                                            chanwt=inpparams['chanwt'],
+                                            mtname=joint_multiterm+'.psf',
+                                            nterms=nterms, reffreq=inpparams['reffreq'], dopsf=True)
+
+                #print("Fit for multiterm")
+                if(deconvolver=='mtmfs' and nterms==1): # work around file naming issue
+                    os.system('rm -rf '+joint_multiterm+'tmp.psf')
+                    os.system('ln -sf '+joint_multiterm+'.psf.tt0 '+joint_multiterm+'tmp.psf')
+                    synu.fitPsfBeam(joint_multiterm+'tmp',nterms=nterms)
+                    os.system('rm -rf '+joint_multiterm+'tmp.psf')
+                else:
+                    synu.fitPsfBeam(joint_multiterm,nterms=nterms)
+
+            if calcres:
+                mysdintlib.cube_to_taylor_sum(cubename=joint_cube+'.residual',
+                                            cubewt=int_cube+'.sumwt',
+                                            chanwt=inpparams['chanwt'],
+                                            mtname=joint_multiterm+'.residual',
+                                            nterms=nterms, reffreq=inpparams['reffreq'], dopsf=False)
 
         if niter>0 :
             isit = deconvolvertool.hasConverged()
@@ -729,7 +771,13 @@ def sdintimaging(
                                               psfcube=sd_cube+'.psf')
 
                 ## Feather the residuals
-                mysdintlib.feather_residual(int_cube, sd_cube, joint_cube, applypb, inpparams)
+                feather_residual(
+                    int_cube=int_cube,
+                    sd_cube=sd_cube,
+                    joint_cube=joint_cube,
+                    applypb=applypb,
+                    inparm=inpparams,
+                )
                 ###############
                 ##### Placeholder code for PSF renormalization if needed
                 #mysdintlib.apply_renorm(imname=joint_cube+'.residual', sumwtname=joint_cube+'.sumwt')
