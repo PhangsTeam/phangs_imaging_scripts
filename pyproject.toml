@@ -50,9 +50,9 @@ casa = [
     "casadata >= 2025.9.22",
     "casaplotms >= 2.8.2",
     "casarecipes >= 0.4.0",
-    "casashell >= 6.7.3.21",
-    "casatasks >= 6.7.3.21",
-    "casatools >= 6.7.3.21",
+    "casashell >= 6.7.3.21, < 6.7.6.14",
+    "casatasks >= 6.7.3.21, < 6.7.6.14",
+    "casatools >= 6.7.3.21, < 6.7.6.14",
     "casaviewer >= 2.4.4 ; platform_system != 'Darwin'",
     "pipeline@git+https://open-bitbucket.nrao.edu/scm/pipe/pipeline.git",
 ]

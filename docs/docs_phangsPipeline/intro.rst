@@ -9,7 +9,7 @@ Introduction
 This is the `PHANGS <https://sites.google.com/view/phangs/home>`_ post-processing and science-ready data product pipeline.
 This pipeline processes data from calibrated visibilities to science-ready spectral cubes and maps.
 The procedures and background for key parts of the pipeline are discussed in the Astrophysical Journal Supplements
-Paper `PHANGS-ALMA Data Processing and Pipeline <https://ui.adsabs.harvard.edu/abs/2021ApJS..255...19L/abstract>`_.
+Paper `PHANGS-ALMA Data Processing and Pipeline <https://scixplorer.org/abs/2021ApJS..255...19L/abstract>`_.
 Please consult that paper for more background and details.
 
 =========================
