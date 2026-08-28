@@ -21,7 +21,7 @@ from casatasks.private.cleanhelper import write_tclean_history, get_func_params
 from casatasks.private.sdint_helper import *
 from casatools import table
 from casatasks import imstat
-from casatools import synthesisimager,synthesisutils
+from casatools import synthesisimager,synthesisutils, image
 
 from .utilsSDIntImaging import feather_int_sd, feather_residual
 
@@ -32,6 +32,49 @@ try:
 except ImportError:
     mpi_available = False
 
+
+def get_csys(im):
+    """Get RA/Dec coordsys from an image"""
+
+    ia = image()
+    ia.open(im)
+    i_csys = ia.coordsys([0, 1]).torecord()
+    ia.close()
+
+    return i_csys
+
+def check_wcs_conforms(
+        wcs1,
+        wcs2,
+):
+    """Check the important values for two csys records to see if they conform
+
+    This assumes just RA/Dec coordinates
+    """
+
+    # Things to key in on that produce singular values
+    keys_to_check = [
+        "conversionSystem",
+        "projection",
+    ]
+    for k in keys_to_check:
+        if wcs1["direction0"][k] != wcs2["direction0"][k]:
+            return False
+
+    # Things to key in on that produce arrays
+    keys_to_check = [
+        "axes",
+        "cdelt",
+        "crpix",
+        "crval",
+        "units",
+    ]
+
+    for k in keys_to_check:
+        if (wcs1["direction0"][k] != wcs2["direction0"][k]).any():
+            return False
+
+    return True
     
 # setup functions
 def setup_imagerObj(paramList=None):
@@ -103,6 +146,10 @@ def setup_imager(imagename, specmode,calcres,calpsf,inparams):
             psfimager.setWeighting()
             psfimager.makeImage('psf', psfParameters['imagename']+'.psf')
 
+    # Check PSF exists
+    if not os.path.exists(imagename + ".psf"):
+        raise FileNotFoundError(imagename + ".psf does not exist")
+
     # can take out this since niter is fixed to 0
     if locparams['niter'] >=0 :
         ## Make dirty image
@@ -143,13 +190,21 @@ def setup_deconvolver(imagename,
         #deconvolvertool.makeImage('psf', imagename+'.psf')
         deconvolvertool.makePB()  ## Make this to turn .weight into .pb maps
 
+    # Check PSF exists
+    if not os.path.exists(imagename + ".psf"):
+        raise FileNotFoundError(imagename + ".psf does not exist")
+
     ## Initialize deconvolvers. ( Order is important. This cleans up a leftover tablecache image.... FIX!)
     deconvolvertool.initializeDeconvolvers()
     deconvolvertool.initializeIterationControl() # This needs to be run before runMajorCycle
 
     if calcres:
         deconvolvertool.runMajorCycle(isCleanCycle=False) ## Make this to make template residual images.
- 
+
+    # Check residual exists
+    if not os.path.exists(imagename + ".residual"):
+        raise FileNotFoundError(imagename + ".residual does not exist")
+
     return deconvolvertool
 
 def setup_sdimaging(template='',
@@ -180,29 +235,72 @@ def setup_sdimaging(template='',
         raise RuntimeError("Internal Error: missing sdimage parameter") 
     if 'pblimit' in inparms:
         pblimit = inparms['pblimit']
-        
-    if calcres:
-        ## Regrid the input SD image to the target coordinate system.
-        sdintlib.regridimage(imagename=sdimage, template=template+'.residual', outfile=output+'.residual')
-        sdintlib.regridimage(imagename=sdimage, template=template+'.residual', outfile=output+'.image')
-    
-        ## Apply the pbmask from the INT image cube, to the SD cubes.
-        #TTB: Create *.mask cube  
-    
-        sdintlib.addmask(inpimage=output+'.residual', pbimage=template+'.pb', pblimit=pblimit)
-        sdintlib.addmask(inpimage=output+'.image', pbimage=template+'.pb', pblimit=pblimit)
 
-    if calcpsf:
-        if sdpsf != "":
-            ## check the coordinates of psf with int psf
-            sdintlib.checkpsf(sdpsf, template + ".psf")
-        if sdpsf !="":
+    # Are we regridding the SD residuals? Check if a) they exist and b) if
+    # they conform along RA/Dec, which is all the regrid actually does
+    temp_csys = get_csys(template + ".residual")
+
+    residual_exists = os.path.exists(output + '.residual')
+    residual_conforms = False
+    if residual_exists:
+        i_csys = get_csys(output + '.residual')
+        residual_conforms = check_wcs_conforms(temp_csys, i_csys)
+
+    regrid_residual = ~residual_exists | ~residual_conforms
+
+    image_exists = os.path.exists(output + '.image')
+    image_conforms = False
+    if image_exists:
+        i_csys = get_csys(output + '.image')
+        image_conforms = check_wcs_conforms(temp_csys, i_csys)
+
+    regrid_image = ~image_exists | ~image_conforms
+
+    ## Regrid the input SD image to the target coordinate system, and apply pbmask
+    if regrid_residual:
+        sdintlib.regridimage(
+            imagename=sdimage, template=template + ".residual", outfile=output + ".residual"
+        )
+        sdintlib.addmask(inpimage=output + ".residual", pbimage=template + ".pb", pblimit=pblimit)
+
+    if regrid_image:
+        sdintlib.regridimage(
+            imagename=sdimage, template=template + ".residual", outfile=output + ".image"
+        )
+        sdintlib.addmask(inpimage=output+'.image', pbimage=template+'.pb', pblimit=pblimit)
+            
+    # If we're supplying a PSF, check that it exists and is valid
+    if sdpsf != "":
+
+        if not os.path.exists(sdpsf):
+            raise FileNotFoundError(sdpsf + "does not exist")
+
+        ## check the coordinates of psf with int psf
+        sdintlib.checkpsf(sdpsf, template + ".psf")
+
+        # Check if we need to regrid
+        psf_exists = os.path.exists(output + ".psf")
+        psf_conforms = False
+        if psf_exists:
+            temp_csys = get_csys(template + ".psf")
+            i_csys = get_csys(output + ".psf")
+            psf_conforms = check_wcs_conforms(temp_csys, i_csys)
+        regrid_psf = ~psf_exists | ~psf_conforms
+
+        if regrid_psf:
             ## Regrid the input PSF cube to the target coordinate system.
             sdintlib.regridimage(imagename=sdpsf, template=template+'.psf', outfile=output+'.psf')
-        else:
-            ## Make an internal sdpsf image if the user has not supplied one.
-            casalog.post("Constructing a SD PSF cube by evaluating Gaussians based on the restoring beam information in the regridded SD Image Cube")
-            sdintlib.create_sd_psf(sdimage=output+'.residual', sdpsfname=output+'.psf')
+        
+    if calcpsf:
+        ## Make an internal sdpsf image if the user has not supplied one.
+        casalog.post(
+            "Constructing a SD PSF cube by evaluating Gaussians based on the restoring beam information in the regridded SD Image Cube"
+        )
+        sdintlib.create_sd_psf(sdimage=output + ".residual", sdpsfname=output + ".psf")
+
+    # Check PSF exists
+    if not os.path.exists(output + '.psf'):
+        raise FileNotFoundError(output + '.psf does not exist')
     
     sdintlib.deleteTmpFiles()
 
@@ -628,6 +726,10 @@ def sdintimaging(
                 inparm=inpparams,
                 mysdintlib=mysdintlib,
             )
+
+        # Check residual exists
+        if not os.path.exists(joint_cube+'.residual'):
+            raise FileNotFoundError(joint_cube + '.residual does not exist')
         
         if calcpsf:
             feather_int_sd(
@@ -639,6 +741,10 @@ def sdintimaging(
             )
             #print("Fitting for cube")
             synu.fitPsfBeam(joint_cube)
+
+        # Check PSF exists
+        if not os.path.exists(joint_cube+'.psf'):
+            raise FileNotFoundError(joint_cube + '.psf does not exist')
 
         ###############
         ##### Placeholder code for PSF renormalization if needed
