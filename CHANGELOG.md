@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix crash with using cleanmasks combined with new sdintimaging implementation (#360)
 - Fixed crash if spectral/Stokes axis is swapped when making large mosaics (#366).
 - Keep tests running on test matrix even if one fails (#379).
+- Fixed typing on key import (#380).
 
 ### Dependencies
 - Bump actions/upload-artifact from 6 to 7 (#313).

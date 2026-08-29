@@ -1505,7 +1505,7 @@ class KeyHandler:
             return None
         if 'interf_config' not in self._config_dict.keys():
             return None
-        interf_configs = self._config_dict['interf_config'].keys()
+        interf_configs = list(self._config_dict['interf_config'].keys())
         this_list = \
             list_utils.select_from_list(interf_configs, skip=skip, only=only, loose=True)
         return this_list
@@ -1522,7 +1522,7 @@ class KeyHandler:
             return None
         if 'feather_config' not in self._config_dict.keys():
             return None
-        feather_configs = self._config_dict['feather_config'].keys()
+        feather_configs = list(self._config_dict['feather_config'].keys())
         this_list = \
             list_utils.select_from_list(feather_configs, skip=skip, only=only, loose=True)
         return this_list
@@ -1538,7 +1538,7 @@ class KeyHandler:
             return None
         if 'singledish_config' not in self._config_dict.keys():
             return None
-        singledish_configs = self._config_dict['singledish_config'].keys()
+        singledish_configs = list(self._config_dict['singledish_config'].keys())
         this_list = \
             list_utils.select_from_list(singledish_configs, skip=skip, only=only, loose=True)
         return this_list
@@ -1570,7 +1570,7 @@ class KeyHandler:
             return []
         if 'line_product' not in self._config_dict.keys():
             return []
-        line_products = self._config_dict['line_product'].keys()
+        line_products = list(self._config_dict['line_product'].keys())
         this_list = \
             list_utils.select_from_list(line_products, skip=skip, only=only, loose=True)
         return this_list
@@ -1586,7 +1586,7 @@ class KeyHandler:
             return []
         if 'cont_product' not in self._config_dict.keys():
             return []
-        cont_products = self._config_dict['cont_product'].keys()
+        cont_products = list(self._config_dict['cont_product'].keys())
         this_list = \
             list_utils.select_from_list(cont_products, skip=skip, only=only, loose=True)
         return this_list
