@@ -379,7 +379,7 @@ def runALMAPipeline(path_galaxy,
     for this_product in product_dict:
 
         name_line = product_dict[this_product]['name_line']
-        chan_dv_kms = product_dict[this_product]['chan_dv_kms']
+        chan_dv_kms = product_dict[this_product]['max_chanwidth_kms']
         freq_rest_GHz = product_dict[this_product]['freq_rest_MHz'] / 1.e3
         vel_cube = product_dict[this_product]['vel_cube']
 
