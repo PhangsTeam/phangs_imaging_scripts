@@ -26,6 +26,33 @@ if casa_enabled:
     logger.debug('casa_enabled = True')
 else:
     logger.debug('casa_enabled = False')
+    
+ALLOWED_POSTPROCESSING_METHODS = [
+    "casa",
+    "spectralcube",
+]
+
+def check_files_exist(
+    f,
+    postprocessing_method="casa",
+):
+    """Check if files exist, potentially modifying by postprocess method
+
+    Args:
+        f (str): filename
+        postprocessing_method (str, optional): Postprocessing method.
+            Should be one of "casa", "spectralcube". Defaults to "casa".
+    """
+
+    if postprocessing_method == "spectralcube":
+        f += ".fits"
+
+    files_exist = True
+    if not os.path.exists(f):
+        logger.warning(f"Missing {f}")
+        files_exist = False
+
+    return files_exist
 
 if casa_enabled:
 
@@ -33,6 +60,9 @@ if casa_enabled:
     from . import casaFeatherRoutines as cfr
     from . import casaMosaicRoutines as cmr
     from . import handlerTemplate
+    from . import scCubeRoutines as scr
+    from . import scFeatherRoutines as sfr
+    from . import scMosaicRoutines as smr
     from . import utilsFilenames
     from . import utilsResolutions
     from .clean_call import CleanCall
@@ -336,21 +366,24 @@ if casa_enabled:
         # region "Tasks" : Individual postprocessing steps
 
         def task_stage_interf_data(
-                self,
-                target=None,
-                product=None,
-                config=None,
-                imaging_method='tclean',
-                extra_ext_in='',
-                extra_ext_out='',
-                check_files=True,
-                trim_coarse_beam_edge_channels=False,
+            self,
+            target=None,
+            product=None,
+            config=None,
+            imaging_method: str = "tclean",
+            postprocessing_method: str = "casa",
+            extra_ext_in="",
+            extra_ext_out="",
+            check_files=True,
         ):
             """
             For one target, product, config combination copy the
             interferometric cube and primary beam file to the working
             postprocessing directory.
             """
+
+            if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
+                raise ValueError(f"Postprocessing method must be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             # Generate file names
 
@@ -370,8 +403,8 @@ if casa_enabled:
 
                 # Check input file existence
                 if check_files:
-                    if not (os.path.isdir(indir + infile)):
-                        logger.warning("Missing " + indir + infile)
+                    files_exist = check_files_exist(indir + infile)
+                    if not files_exist:
                         continue
 
                 logger.info("")
@@ -385,26 +418,31 @@ if casa_enabled:
                 # Move the cubes to the postprocess directory, trimming along the way
                 # (though not rebinning)
                 if not self._dry_run:
-                    os.system('rm -rf ' + outdir + outfile)
-                    os.system('rm -rf ' + outdir + outfile + ".temp")
 
-                    ccr.trim_cube(
-                        infile=indir + infile,
-                        outfile=outdir + outfile,
-                        overwrite=True,
-                        inplace=False,
-                        pad=1,
-                        rebin=False,
-                    )
-
-            # in case of merged datasets with non-identical frequency setups imaged with per-plane beam,
-            # some edge channels will have much coarser beam, we trim these edge channels here.
-            if trim_coarse_beam_edge_channels:
-                ccr.trim_coarse_beam_edge_channels(
-                    infile=outdir + fname_dict_out['orig'],
-                    inpbfile=outdir + fname_dict_out['pb'],
-                    inplace=True,
-                )
+                    if postprocessing_method == "casa":
+                        os.system("rm -rf " + outdir + outfile)
+                        os.system("rm -rf " + outdir + outfile + ".temp")
+                        
+                        ccr.trim_cube(
+                            infile=indir + infile,
+                            outfile=outdir + outfile,
+                            overwrite=True,
+                            inplace=False,
+                            pad=1,
+                            rebin=False,
+                        )
+                    elif postprocessing_method == "spectralcube":
+                        os.system(f"rm -rf {outdir}{outfile}.fits")
+                        
+                        scr.trim_cube(
+                            infile=f"{indir}{infile}",
+                            outfile=f"{outdir}{outfile}.fits",
+                            overwrite=True,
+                            pad=1,
+                            rebin=False,
+                        )
+                    else:
+                        raise ValueError(f"postprocessing_method must be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             return ()
 
@@ -414,6 +452,7 @@ if casa_enabled:
                 product=None,
                 config=None,
                 imaging_method='tclean',
+                postprocessing_method="casa",
                 in_tag='orig',
                 out_tag='pbcorr',
                 extra_ext_in='',
@@ -424,6 +463,9 @@ if casa_enabled:
             For one target, product, config combination primary beam
             correct the interferometer data.
             """
+
+            if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
+                raise ValueError(f"Postprocessing method must be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             # Generate file names
 
@@ -446,11 +488,17 @@ if casa_enabled:
             # Check input file existence
 
             if check_files:
-                if not (os.path.isdir(indir + infile)):
-                    logger.warning("Missing " + indir + infile)
+                files_exist = check_files_exist(
+                    indir + infile,
+                    postprocessing_method=postprocessing_method,
+                )
+                if not files_exist:
                     return ()
-                if not (os.path.isdir(indir + pbfile)):
-                    logger.warning("Missing " + indir + pbfile)
+                files_exist = check_files_exist(
+                    indir + pbfile,
+                    postprocessing_method=postprocessing_method,
+                )
+                if not files_exist:
                     return ()
 
             # Apply the primary beam correction to the data.
@@ -462,18 +510,30 @@ if casa_enabled:
             logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
             logger.info("")
 
-            logger.info("Using ccr.primary_beam_correct")
+            logger.info("Using primary_beam_correct")
             logger.info("Correcting to " + outfile)
             logger.info("Correcting from " + infile)
             logger.info("Correcting using " + pbfile)
 
             if not self._dry_run:
-                ccr.primary_beam_correct(
-                    infile=indir + infile,
-                    outfile=outdir + outfile,
-                    pbfile=indir + pbfile,
-                    cutoff=cutoff,
-                    overwrite=True)
+                if postprocessing_method == "casa":
+                    ccr.primary_beam_correct(
+                        infile=indir + infile,
+                        outfile=outdir + outfile,
+                        pbfile=indir + pbfile,
+                        cutoff=cutoff,
+                        overwrite=True,
+                    )
+                elif postprocessing_method == "spectralcube":
+                    scr.primary_beam_correct(
+                        infile=f"{indir}{infile}.fits",
+                        outfile=f"{outdir}{outfile}.fits",
+                        pbfile=f"{indir}{pbfile}.fits",
+                        cutoff=cutoff,
+                        overwrite=True,
+                    )
+                else:
+                    raise ValueError(f"postprocessing_method must be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             return ()
 
@@ -483,6 +543,7 @@ if casa_enabled:
                 product=None,
                 config=None,
                 imaging_method='tclean',
+                postprocessing_method="casa",
                 in_tag='pbcorr',
                 out_tag='pbcorr_round',
                 extra_ext_in='',
@@ -496,6 +557,9 @@ if casa_enabled:
             this task can also be used to convolve data to a fixed (round)
             angular resolution.
             """
+            
+            if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
+                raise ValueError(f"postprocessing_method must be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             # Generate file names
 
@@ -512,8 +576,10 @@ if casa_enabled:
             # Check input file existence
 
             if check_files:
-                if not (os.path.isdir(indir + infile)):
-                    logger.warning("Missing " + infile)
+                files_exist = check_files_exist(indir+infile,
+                                                postprocessing_method=postprocessing_method,
+                                                )
+                if not files_exist:
                     return ()
 
             # Convolve the data to have a round beam.
@@ -525,18 +591,28 @@ if casa_enabled:
             logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
             logger.info("")
 
-            logger.info("Using ccr.convolve_to_round_beam")
+            logger.info("Using convolve_to_round_beam")
             logger.info("Convolving from " + infile)
             logger.info("Convolving to " + outfile)
             if force_beam_as is not None:
                 logger.info("Forcing beam to " + str(force_beam_as))
 
             if not self._dry_run:
-                ccr.convolve_to_round_beam(
-                    infile=indir + infile,
-                    outfile=outdir + outfile,
-                    force_beam=force_beam_as,
-                    overwrite=True)
+                if postprocessing_method == "casa":
+                    ccr.convolve_to_round_beam(
+                        infile=indir + infile,
+                        outfile=outdir + outfile,
+                        force_beam=force_beam_as,
+                        overwrite=True,
+                    )
+                elif postprocessing_method == "spectralcube":
+                    scr.convolve_to_round_beam(
+                        infile=f"{indir}{infile}.fits",
+                        outfile=f"{outdir}{outfile}.fits",
+                        force_beam=force_beam_as,
+                        overwrite=True,
+                    )
+            
 
             return ()
 
@@ -545,6 +621,7 @@ if casa_enabled:
                 target=None,
                 product=None,
                 config=None,
+                postprocessing_method="casa",
                 template_tag='pbcorr_round',
                 out_tag='prepped_sd',
                 extra_ext_in='',
@@ -555,6 +632,9 @@ if casa_enabled:
             For one target, product, config combination, copy the single
             dish data and align it to the interferometric grid.
             """
+            
+            if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
+                raise ValueError(f"postprocessing_method must be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             # Generate file names
 
@@ -573,12 +653,15 @@ if casa_enabled:
             # Check input file existence
 
             if check_files:
-                if (not (os.path.isdir(indir + infile))) and \
-                        (not (os.path.isfile(indir + infile))):
-                    logger.warning("Missing " + infile)
+
+                files_exist = check_files_exist(indir+infile)
+                if not files_exist:
                     return ()
-                if not (os.path.isdir(tempdir + template)):
-                    logger.warning("Missing " + tempdir + template)
+                
+                files_exist = check_files_exist(tempdir+template,
+                                                postprocessing_method=postprocessing_method,
+                                                )
+                if not files_exist:
                     return ()
 
             # Stage the singledish data for feathering
@@ -590,37 +673,51 @@ if casa_enabled:
             logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
             logger.info("")
 
-            logger.info("Using cfr.prep_sd_for_feather.")
+            logger.info("Using prep_sd_for_feather.")
             logger.info("Prepping " + outfile)
             logger.info("Original file " + infile)
             logger.info("Using interferometric template " + template)
 
             if not self._dry_run:
-                cfr.prep_sd_for_feather(
-                    sdfile_in=indir + infile,
-                    sdfile_out=outdir + outfile,
-                    interf_file=tempdir + template,
-                    do_import=True,
-                    do_align=True,
-                    do_checkunits=True,
-                    overwrite=True)
+                
+                if postprocessing_method == "casa":
+                    cfr.prep_sd_for_feather(
+                        sdfile_in=indir + infile,
+                        sdfile_out=outdir + outfile,
+                        interf_file=tempdir + template,
+                        do_import=True,
+                        do_align=True,
+                        do_checkunits=True,
+                        overwrite=True)
+                elif postprocessing_method == "spectralcube":
+                    sfr.prep_sd_for_feather(
+                        sdfile_in=f"{indir}{infile}",
+                        sdfile_out=f"{outdir}{outfile}.fits",
+                        interf_file=f"{tempdir}{template}.fits",
+                        do_align=True,
+                        do_checkunits=True,
+                        overwrite=True,
+                    )
+                else:
+                    raise ValueError(f"postprocessing_method must be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             return ()
 
         def task_make_interf_weight(
-                self,
-                target=None,
-                product=None,
-                config=None,
-                imaging_method='tclean',
-                image_tag='pbcorr_round',
-                in_tag='pb',
-                input_type='pb',
-                scale_by_noise=True,
-                out_tag='weight',
-                extra_ext_in='',
-                extra_ext_out='',
-                check_files=True,
+            self,
+            target=None,
+            product=None,
+            config=None,
+            imaging_method="tclean",
+            postprocessing_method: str = "casa",
+            image_tag="pbcorr_round",
+            in_tag="pb",
+            input_type="pb",
+            scale_by_noise=True,
+            out_tag="weight",
+            extra_ext_in="",
+            extra_ext_out="",
+            check_files=True,
         ):
             """
             For one target, product, config combination, make a 'weight'
@@ -628,6 +725,9 @@ if casa_enabled:
             overlapping cubes. This task targets interferometric dish
             data.
             """
+
+            if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
+                raise ValueError(f"postprocessing_method must be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             # Generate file names
 
@@ -645,11 +745,16 @@ if casa_enabled:
             # Check input file existence
 
             if check_files:
-                if not (os.path.isdir(indir + infile)):
-                    logger.warning("Missing " + infile)
+                files_exist = check_files_exist(indir+infile,
+                                                postprocessing_method=postprocessing_method,
+                                                )
+                if not files_exist:
                     return ()
-                if not (os.path.isdir(indir + image_file)):
-                    logger.warning("Missing " + image_file)
+
+                files_exist = check_files_exist(indir+image_file,
+                                                postprocessing_method=postprocessing_method,
+                                                )
+                if not files_exist:
                     return ()
 
             # Create a weight image for use linear mosaicking targets that
@@ -662,19 +767,33 @@ if casa_enabled:
             logger.info("&%&%&%&%&%&%&%&%&%&%&%&")
             logger.info("")
 
-            logger.info("Using cmr.generate_weight_file.")
+            logger.info("Using generate_weight_file.")
             logger.info("Making weight file " + outfile)
             logger.info("Based off of primary beam file " + infile)
             logger.info("Measuring noise from file " + image_file)
 
             if not self._dry_run:
-                cmr.generate_weight_file(
-                    image_file=indir + image_file,
-                    input_file=indir + infile,
-                    input_type=input_type,
-                    outfile=indir + outfile,
-                    scale_by_noise=scale_by_noise,
-                    overwrite=True)
+                
+                if postprocessing_method == "casa":
+                    cmr.generate_weight_file(
+                        image_file=indir + image_file,
+                        input_file=indir + infile,
+                        input_type=input_type,
+                        outfile=indir + outfile,
+                        scale_by_noise=scale_by_noise,
+                        overwrite=True,
+                    )
+                elif postprocessing_method == "spectralcube":
+                    smr.generate_weight_file(
+                        image_file=f"{indir}{image_file}.fits",
+                        input_file=f"{indir}{infile}.fits",
+                        input_type=input_type,
+                        outfile=f"{indir}{outfile}.fits",
+                        scale_by_noise=scale_by_noise,
+                        overwrite=True,
+                    )
+                else:
+                    raise ValueError(f"postprocessing_method must be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             return ()
 
@@ -683,6 +802,7 @@ if casa_enabled:
                 target=None,
                 product=None,
                 config=None,
+                postprocessing_method="casa",
                 image_tag='prepped_sd',
                 out_tag='sd_weight',
                 extra_ext_in='',
@@ -694,6 +814,9 @@ if casa_enabled:
             image for use in linearly mosaicking the cube with other,
             overlapping cubes. This task targets single dish data.
             """
+            
+            if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
+                raise ValueError(f"postprocessing_method must be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             # Generate file names
 
@@ -710,8 +833,10 @@ if casa_enabled:
             # Check input file existence
 
             if check_files:
-                if not (os.path.isdir(indir + image_file)):
-                    logger.warning("Missing " + image_file)
+                files_exist = check_files_exist(indir+image_file,
+                                                postprocessing_method=postprocessing_method,
+                                                )
+                if not files_exist:
                     return ()
 
             # Make a weight file for single dish targets that
@@ -724,18 +849,31 @@ if casa_enabled:
             logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&")
             logger.info("")
 
-            logger.info("Using cmr.generate_weight_file.")
+            logger.info("Using generate_weight_file.")
             logger.info("Making weight file " + outfile)
             logger.info("Measuring noise from file " + image_file)
 
             if not self._dry_run:
-                cmr.generate_weight_file(
-                    image_file=indir + image_file,
-                    input_value=1.0,
-                    input_type='weight',
-                    outfile=indir + outfile,
-                    scale_by_noise=True,
-                    overwrite=True)
+                if postprocessing_method == "casa":
+                    cmr.generate_weight_file(
+                        image_file=indir + image_file,
+                        input_value=1.0,
+                        input_type='weight',
+                        outfile=indir + outfile,
+                        scale_by_noise=True,
+                        overwrite=True,
+                    )
+                elif postprocessing_method == "spectralcube":
+                    smr.generate_weight_file(
+                        image_file=f"{indir}{image_file}.fits",
+                        input_value=1.0,
+                        input_type="weight",
+                        outfile=f"{indir}{outfile}.fits",
+                        scale_by_noise=True,
+                        overwrite=True,
+                    )
+                else:
+                    raise ValueError(f"postprocessing_method must be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             return ()
 
@@ -753,6 +891,7 @@ if casa_enabled:
                 apod_ext='pb',
                 copy_weights=True,
                 check_files=True,
+                postprocessing_method="casa",
         ):
             """
             For one target, product, config combination, feather together
@@ -764,6 +903,9 @@ if casa_enabled:
             from the interferometric side to become the weights for the
             new feathered data.
             """
+
+            if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
+                raise ValueError(f"Postprocessing method must be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             # Generate file names
 
@@ -803,7 +945,7 @@ if casa_enabled:
             logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
             logger.info("")
 
-            logger.info("Using cfr.feather_two_cubes.")
+            logger.info("Using feather_two_cubes.")
             logger.info("Feathering " + outfile)
             logger.info("Feathering interferometric data " + interf_file)
             logger.info("Feathering single dish data " + sd_file)
@@ -812,46 +954,55 @@ if casa_enabled:
             # associated with it. Run the method that the
             # user has selected.
 
+            # Switches between apodization and not
+            do_apodize = False
+            apod_file = None
+            apod_cutoff = -1.0
+            
             if apodize:
-
                 apod_file = fname_dict_in[apod_ext]
-
                 logger.info("Apodizing using file " + apod_file)
+                apod_file = f"{indir}{apod_file}"
+                do_apodize = True
+                apod_cutoff = 0.0
 
-                if not self._dry_run:
+            if not self._dry_run:
+                if postprocessing_method == "casa":
                     cfr.feather_two_cubes(
                         interf_file=indir + interf_file,
                         sd_file=indir + sd_file,
                         out_file=outdir + outfile,
                         do_blank=True,
-                        do_apodize=True,
-                        apod_file=indir + apod_file,
-                        apod_cutoff=0.0,
-                        overwrite=True)
-
-            else:
-
-                if not self._dry_run:
-                    cfr.feather_two_cubes(
-                        interf_file=indir + interf_file,
-                        sd_file=indir + sd_file,
-                        out_file=outdir + outfile,
-                        do_blank=True,
-                        do_apodize=False,
-                        apod_file=None,
-                        apod_cutoff=-1.0,
-                        overwrite=True)
+                        do_apodize=do_apodize,
+                        apod_file=apod_file,
+                        apod_cutoff=apod_cutoff,
+                        overwrite=True,
+                    )
+                elif postprocessing_method == "spectralcube":
+                    sfr.feather_two_cubes(
+                        interf_file=f"{indir}{interf_file}.fits",
+                        sd_file=f"{indir}{sd_file}.fits",
+                        out_file=f"{outdir}{outfile}.fits",
+                        do_apodize=do_apodize,
+                        apod_file=apod_file,
+                        apod_cutoff=apod_cutoff,
+                        overwrite=True,
+                    )
+                else:
+                    raise ValueError(f"postprocessing_method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             if copy_weights:
 
-                interf_weight_exists = False
                 interf_weight_file = fname_dict_in['weight']
-                if os.path.isdir(indir + interf_weight_file):
-                    interf_weight_exists = True
-                else:
+
+                interf_weight_exists = check_files_exist(indir + interf_weight_file,
+                                                         postprocessing_method=postprocessing_method,
+                                                         )
+
+                if not interf_weight_exists:
                     logger.info("Interferometric weight file not found " + interf_weight_file)
 
-                if interf_weight_exists:
+                else:
                     logger.info("")
                     logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
                     logger.info("Copying weights for:")
@@ -864,17 +1015,26 @@ if casa_enabled:
                     logger.info("Copying from " + interf_weight_file)
                     logger.info("Copying to " + out_weight_file)
                     if not self._dry_run:
-                        ccr.copy_importfits(infile=indir + interf_weight_file,
-                                            outfile=outdir + out_weight_file,
-                                            overwrite=True,
-                                            )
+
+                        if postprocessing_method == "casa":
+                            ccr.copy_importfits(infile=indir + interf_weight_file,
+                                                outfile=outdir + out_weight_file,
+                                                overwrite=True,
+                                                )
+                        elif postprocessing_method == "spectralcube":
+                            os.system(f"cp -rf {indir}{interf_weight_file}.fits {outdir}{out_weight_file}.fits")
+                        else:
+                            raise ValueError(f"postprocessing_method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
+
             return ()
 
         def task_rename_sdintimaging(self,
                                      target=None,
                                      product=None,
                                      config=None,
-                                     imaging_method='sdintimaging'):
+                                     imaging_method='sdintimaging',
+                                     postprocessing_method="casa",
+                                     ):
 
             if target is None:
                 logger.warning('Missing target')
@@ -889,6 +1049,9 @@ if casa_enabled:
             if imaging_method != 'sdintimaging':
                 logger.warning('This should only be run for sdintimaging')
                 return
+            
+            if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
+                raise ValueError(f"postprocessing_method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             fname_dict_in = self._fname_dict(target=target, product=product, config=config,
                                              imaging_method=imaging_method)
@@ -937,11 +1100,35 @@ if casa_enabled:
                     continue
 
                 file_name = outdir + item
+                if postprocessing_method == "spectralcube":
+                    file_name += ".fits"
+                
                 if os.path.exists(file_name):
                     new_file_name = outdir + fname_dict_out[key]
+
+                    if postprocessing_method == "spectralcube":
+                        new_file_name += ".fits"
+                    
                     command = 'mv -f %s %s' % (file_name, new_file_name)
                     os.system('rm -rf %s' % new_file_name)
                     os.system(command)
+
+                # Rename the image_slice mosaic files
+                slice_file = outdir + item + "_slice.txt"
+                if os.path.exists(slice_file):
+                    new_slice_file = outdir + fname_dict_out[key] + "_slice.txt"
+                    os.system('rm -f %s' % new_slice_file)
+                    os.system('mv -f %s %s' % (slice_file, new_slice_file))
+
+            # Rename the linear mosaic template headers
+            for template_suffix in ["flux", "weight", "mask"]:
+                template_in = outdir + "%s_%s_%s_linmos_template_%s.txt" % (
+                    target, config, product, template_suffix)
+                template_out = outdir + "%s_%s_%s_linmos_template_%s.txt" % (
+                    target, feather_config, product, template_suffix)
+                if os.path.exists(template_in):
+                    os.system('rm -f %s' % template_out)
+                    os.system('mv -f %s %s' % (template_in, template_out))
 
             return
 
@@ -951,6 +1138,7 @@ if casa_enabled:
                 product=None,
                 config=None,
                 imaging_method='tclean',
+                postprocessing_method="casa",
                 in_tag='pbcorr_round',
                 out_tag='pbcorr_trimmed',
                 do_trimrind=True,
@@ -966,6 +1154,9 @@ if casa_enabled:
             to the smallest reasonable volume. Also align the primary beam
             file out onto this grid.
             """
+
+            if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
+                raise ValueError(f"postprocessing_method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             # Generate file names
 
@@ -985,8 +1176,10 @@ if casa_enabled:
             # Check input file existence
 
             if check_files:
-                if not (os.path.isdir(indir + infile)):
-                    logger.warning("Missing " + infile)
+                files_exist = check_files_exist(indir + infile,
+                                                postprocessing_method=postprocessing_method,
+                                                )
+                if not files_exist:
                     return ()
 
             # Compress, reducing cube volume.
@@ -998,53 +1191,88 @@ if casa_enabled:
             logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
             logger.info("")
 
-            logger.info("Producing " + outfile + " using ccr.trim_cube.")
+            logger.info("Producing " + outfile + " using trim_cube.")
             logger.info("Trimming from original file " + infile)
 
             if not self._dry_run:
-                ccr.trim_cube(
-                    infile=indir + infile,
-                    outfile=outdir + outfile,
-                    overwrite=True,
-                    inplace=False,
-                    min_pixperbeam=3,
-                    pad=1)
+                if postprocessing_method == "casa":
+                    ccr.trim_cube(
+                        infile=indir + infile,
+                        outfile=outdir + outfile,
+                        overwrite=True,
+                        inplace=False,
+                        min_pixperbeam=3,
+                        pad=1,
+                    )
+                elif postprocessing_method == "spectralcube":
+                    scr.trim_cube(
+                        infile=f"{indir}{infile}.fits",
+                        outfile=f"{outdir}{outfile}.fits",
+                        overwrite=True,
+                        min_pixperbeam=3,
+                        pad=1,
+                    )
+                else:
+                    raise ValueError(f"postprocessing_method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
                 if do_trimrind:
-                    ccr.trim_rind(
-                        infile=outdir + outfile,
-                        inplace=True,
-                        pixels=1)
+                    if postprocessing_method == "casa":
+                        ccr.trim_rind(
+                            infile=outdir + outfile,
+                            inplace=True,
+                            pixels=1,
+                        )
+                    elif postprocessing_method == "spectralcube":
+                        scr.trim_rind(
+                            infile=f"{outdir}{outfile}.fits",
+                            pixels=1,
+                        )
+                    else:
+                        raise ValueError(f"postprocessing_method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
-            if do_pb_too is False:
+            if not do_pb_too:
                 return ()
 
             if check_files:
-                if not (os.path.isdir(indir + infile_pb)):
-                    logger.warning("Missing " + infile_pb)
+                files_exist = check_files_exist(indir + infile,
+                                                postprocessing_method=postprocessing_method,
+                                                )
+                if not files_exist:
                     return ()
 
             template = fname_dict_out['pbcorr_trimmed']
 
             if check_files:
-                if not (os.path.isdir(outdir + template)):
-                    logger.warning("Missing " + template)
+                files_exist = check_files_exist(outdir + template, 
+                                                postprocessing_method=postprocessing_method,
+                                                )
+                if not files_exist:
                     return ()
 
             logger.info("Aligning primary beam image to new astrometry")
-            logger.info("Using ccr.align_to_target.")
+            logger.info("Using align_to_target.")
             logger.info("Aligning original file " + infile_pb)
             logger.info("Aligning to produce output file " + outfile_pb)
             logger.info("Aligning to template " + template)
 
             if not self._dry_run:
-                ccr.align_to_target(
-                    infile=indir + infile_pb,
-                    outfile=outdir + outfile_pb,
-                    template=outdir + template,
-                    interpolation='cubic',
-                    overwrite=True,
-                )
+                if postprocessing_method == "casa":
+                    ccr.align_to_target(
+                        infile=indir + infile_pb,
+                        outfile=outdir + outfile_pb,
+                        template=outdir + template,
+                        interpolation='cubic',
+                        overwrite=True,
+                    )
+                elif postprocessing_method == "spectralcube":
+                    scr.align_to_target(
+                        infile=f"{indir}{infile_pb}.fits",
+                        outfile=f"{outdir}{outfile_pb}.fits",
+                        template=f"{outdir}{template}.fits",
+                        overwrite=True,
+                    )
+                else:
+                    raise ValueError(f"postprocessing method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             return ()
 
@@ -1054,6 +1282,7 @@ if casa_enabled:
                 product=None,
                 config=None,
                 imaging_method='tclean',
+                postprocessing_method="casa",
                 in_tag='pbcorr_trimmed',
                 out_tag='pbcorr_trimmed_k',
                 extra_ext_in='',
@@ -1064,6 +1293,9 @@ if casa_enabled:
             For one target, config, product combination convert the units
             from Jy/beam to Kelvin.
             """
+            
+            if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
+                raise ValueError(f"postprocessing_method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             # Generate file names
 
@@ -1080,8 +1312,10 @@ if casa_enabled:
             # Check input file existence
 
             if check_files:
-                if not (os.path.isdir(indir + infile)):
-                    logger.warning("Missing " + infile)
+                files_exist = check_files_exist(indir + infile,
+                                                postprocessing_method=postprocessing_method,
+                                                )
+                if not files_exist:
                     return ()
 
             # Change units from Jy/beam to Kelvin.
@@ -1093,17 +1327,27 @@ if casa_enabled:
             logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
             logger.info("")
 
-            logger.info("Using ccr.convert_jytok")
+            logger.info("Using convert_jytok")
             logger.info("Creating " + outfile)
             logger.info("Converting from original file " + infile)
 
             if not self._dry_run:
-                ccr.convert_jytok(
-                    infile=indir + infile,
-                    outfile=outdir + outfile,
-                    overwrite=True,
-                    inplace=False,
-                )
+                if postprocessing_method == "casa":
+                    ccr.convert_jytok(
+                        infile=indir + infile,
+                        outfile=outdir + outfile,
+                        overwrite=True,
+                        inplace=False,
+                    )
+                elif postprocessing_method == "spectralcube":
+                    scr.convert_units(
+                        infile=f"{indir}{infile}.fits",
+                        outfile=f"{outdir}{outfile}.fits",
+                        units="K",
+                        overwrite=True,
+                    )
+                else:
+                    raise ValueError(f"postprocessing method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             return ()
 
@@ -1113,6 +1357,7 @@ if casa_enabled:
                 product=None,
                 config=None,
                 imaging_method='tclean',
+                postprocessing_method="casa",
                 in_tag='pbcorr_trimmed_k',
                 out_tag='pbcorr_trimmed_k_fits',
                 do_pb_too=True,
@@ -1126,6 +1371,9 @@ if casa_enabled:
             For one target, config, product combination export to
             FITS. Optionally also export the primary beam files.
             """
+            
+            if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
+                raise ValueError(f"postprocessing method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             # Generate file names
 
@@ -1142,8 +1390,10 @@ if casa_enabled:
             # Check input file existence
 
             if check_files:
-                if not (os.path.isdir(indir + infile)):
-                    logger.warning("Missing " + infile)
+                files_exist = check_files_exist(indir + infile,
+                                                postprocessing_method=postprocessing_method,
+                                                )
+                if not files_exist:
                     return ()
 
             # Export to FITS and clean up output
@@ -1155,24 +1405,39 @@ if casa_enabled:
             logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
             logger.info("")
 
-            logger.info("Using ccr.export_and_cleanup.")
+            logger.info("Using export_and_cleanup.")
             logger.info("Export to " + outfile)
             logger.info("Writing from input cube " + infile)
 
             if not self._dry_run:
-                ccr.export_and_cleanup(
-                    infile=indir + infile,
-                    outfile=outdir + outfile,
-                    overwrite=True,
-                    remove_cards=[],
-                    add_cards={'OBJECT': target.upper()},
-                    add_history=[],
-                    zap_history=True,
-                    round_beam=True,
-                    roundbeam_tol=0.01,
-                )
+                if postprocessing_method == "casa":
+                    ccr.export_and_cleanup(
+                        infile=indir + infile,
+                        outfile=outdir + outfile,
+                        overwrite=True,
+                        remove_cards=[],
+                        add_cards={'OBJECT': target.upper()},
+                        add_history=[],
+                        zap_history=True,
+                        round_beam=True,
+                        roundbeam_tol=0.01,
+                    )
+                elif postprocessing_method == "spectralcube":
+                    scr.export_and_cleanup(
+                        infile=f"{indir}{infile}.fits",
+                        outfile=outdir + outfile,
+                        overwrite=True,
+                        remove_cards=[],
+                        add_cards={"OBJECT": target.upper()},
+                        add_history=[],
+                        zap_history=True,
+                        round_beam=True,
+                        roundbeam_tol=0.01,
+                    )
+                else:
+                    raise ValueError(f"postprocessing method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
-            if do_pb_too is False:
+            if not do_pb_too:
                 return ()
 
             # Check input file existence
@@ -1181,25 +1446,42 @@ if casa_enabled:
             outfile_pb = fname_dict_out[out_pb_tag]
 
             if check_files:
-                if not (os.path.isdir(indir + infile_pb)):
-                    logger.warning("Missing " + infile_pb)
+                files_exist = check_files_exist(indir + infile_pb,
+                                                postprocessing_method=postprocessing_method,
+                                                )
+                if not files_exist:
                     return ()
 
             logger.info("Writing from primary beam " + infile_pb)
             logger.info("Writing output primary beam " + outfile_pb)
 
             if not self._dry_run:
-                ccr.export_and_cleanup(
-                    infile=indir + infile_pb,
-                    outfile=outdir + outfile_pb,
-                    overwrite=True,
-                    remove_cards=[],
-                    add_cards={'OBJECT': target.upper()},
-                    add_history=[],
-                    zap_history=True,
-                    round_beam=False,
-                    roundbeam_tol=0.01,
-                )
+                if postprocessing_method == "casa":
+                    ccr.export_and_cleanup(
+                        infile=indir + infile_pb,
+                        outfile=outdir + outfile_pb,
+                        overwrite=True,
+                        remove_cards=[],
+                        add_cards={'OBJECT': target.upper()},
+                        add_history=[],
+                        zap_history=True,
+                        round_beam=False,
+                        roundbeam_tol=0.01,
+                    )
+                elif postprocessing_method == "spectralcube":
+                    scr.export_and_cleanup(
+                        infile=f"{indir}{infile_pb}.fits",
+                        outfile=outdir + outfile_pb,
+                        overwrite=True,
+                        remove_cards=[],
+                        add_cards={'OBJECT': target.upper()},
+                        add_history=[],
+                        zap_history=True,
+                        round_beam=False,
+                        roundbeam_tol=0.01,
+                    )
+                else:
+                    raise ValueError(f"postprocessing method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             return ()
 
@@ -1208,6 +1490,7 @@ if casa_enabled:
                 target=None,
                 product=None,
                 config=None,
+                postprocessing_method="casa",
                 in_tag='pbcorr_round',
                 out_tag='linmos_commonres',
                 extra_ext_in='',
@@ -1220,6 +1503,9 @@ if casa_enabled:
             common angular resolution, appropriate for gridding together
             into a single image.
             """
+            
+            if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
+                raise ValueError(f"postprocessing_method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             # Generate file names
 
@@ -1244,11 +1530,20 @@ if casa_enabled:
                 )
 
                 infile = indir + this_part_dict_in[in_tag]
-                infile_exists = os.path.isdir(infile)
+                
+                infile_exists = check_files_exist(infile,
+                                                  postprocessing_method=postprocessing_method,
+                                                  )
 
                 outfile = outdir + this_part_dict_out[out_tag]
 
                 if infile_exists:
+
+                    # Append a .fits if we're using spectral-cube
+                    if postprocessing_method == "spectralcube":
+                        infile += ".fits"
+                        outfile += ".fits"
+
                     infile_list.append(infile)
                     outfile_list.append(outfile)
                 else:
@@ -1264,7 +1559,7 @@ if casa_enabled:
             logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%")
             logger.info("")
 
-            logger.info("Using cmr.common_res_for_mosaic.")
+            logger.info("Using common_res_for_mosaic.")
             logger.info("Convolving " + target)
             logger.info("Convolving original files " + str(infile_list))
             logger.info("Convolving to convolved output " + str(outfile_list))
@@ -1281,14 +1576,26 @@ if casa_enabled:
             # resolution and (maybe?) pixel padding.
 
             if not self._dry_run:
-                cmr.common_res_for_mosaic(
-                    infile_list=infile_list,
-                    outfile_list=outfile_list,
-                    do_convolve=True,
-                    target_res=target_res,
-                    pixel_padding=pixel_padding,
-                    overwrite=True,
-                )
+                if postprocessing_method == "casa":
+                    cmr.common_res_for_mosaic(
+                        infile_list=infile_list,
+                        outfile_list=outfile_list,
+                        do_convolve=True,
+                        target_res=target_res,
+                        pixel_padding=pixel_padding,
+                        overwrite=True,
+                    )
+                elif postprocessing_method == "spectralcube":
+                    smr.common_res_for_mosaic(
+                        infile_list=infile_list,
+                        outfile_list=outfile_list,
+                        do_convolve=True,
+                        target_res=target_res,
+                        pixel_padding=pixel_padding,
+                        overwrite=True,
+                    )
+                else:
+                    raise ValueError(f"postprocessing_method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             return ()
 
@@ -1297,6 +1604,7 @@ if casa_enabled:
                 target=None,
                 product=None,
                 config=None,
+                postprocessing_method="casa",
                 in_tags=['linmos_commonres', 'weight', 'prepped_sd', 'sd_weight'],
                 out_tags=['linmos_aligned', 'weight_aligned', 'sd_aligned', 'sd_weight_aligned'],
                 extra_ext_in='',
@@ -1308,6 +1616,9 @@ if casa_enabled:
             mosaic, align all parts of the mosaic to a common astrometric
             grid for combination into a single image.
             """
+            
+            if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
+                raise ValueError(f"postprocessing_method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             # Map the input and output tags to one another in a dictionary
 
@@ -1350,11 +1661,19 @@ if casa_enabled:
                     this_tag_out = out_tag_dict[this_tag_in]
 
                     infile = indir + this_part_dict_in[this_tag_in]
-                    infile_exists = os.path.isdir(infile)
+                    infile_exists = check_files_exist(infile,
+                                                      postprocessing_method=postprocessing_method,
+                                                      )
 
                     outfile = outdir + this_part_dict_out[this_tag_out]
 
                     if infile_exists:
+                        
+                        # Append the .fits if we're postprocessing using spectralcube
+                        if postprocessing_method == "spectralcube":
+                            infile += ".fits"
+                            outfile += ".fits"
+                        
                         infile_list.append(infile)
                         outfile_list.append(outfile)
                     else:
@@ -1370,33 +1689,48 @@ if casa_enabled:
             logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%")
             logger.info("")
 
-            logger.info("Using cmr.common_grid_for_mosaic.")
+            logger.info("Using common_grid_for_mosaic.")
             logger.info("Aligning " + target)
             logger.info("Convolving original files " + str(infile_list))
             logger.info("Convolving to convolved output " + str(outfile_list))
 
-            # TBD implement overrides
-
-            ra_ctr = None
-            dec_ctr = None
-            delta_ra = None
-            delta_dec = None
-
             if not self._dry_run:
-                cmr.common_grid_for_mosaic(
-                    infile_list=infile_list,
-                    outfile_list=outfile_list,
-                    ra_ctr=ra_ctr,
-                    dec_ctr=dec_ctr,
-                    delta_ra=delta_ra,
-                    delta_dec=delta_dec,
-                    allow_big_image=False,
-                    too_big_pix=1e4,
-                    asvelocity=True,
-                    interpolation='cubic',
-                    axes=[-1],
-                    overwrite=True,
-                )
+                if postprocessing_method == "casa":
+                    # TBD implement overrides
+                    ra_ctr = None
+                    dec_ctr = None
+                    delta_ra = None
+                    delta_dec = None
+                    
+                    cmr.common_grid_for_mosaic(
+                        infile_list=infile_list,
+                        outfile_list=outfile_list,
+                        ra_ctr=ra_ctr,
+                        dec_ctr=dec_ctr,
+                        delta_ra=delta_ra,
+                        delta_dec=delta_dec,
+                        allow_big_image=False,
+                        too_big_pix=1e4,
+                        asvelocity=True,
+                        interpolation='cubic',
+                        axes=[-1],
+                        overwrite=True,
+                    )
+                elif postprocessing_method == "spectralcube":
+
+                    # Set up name for the template cubes
+                    template_name = os.path.join(outdir, f"{target}_{config}_{product}_linmos_template.fits")
+
+                    smr.common_grid_for_mosaic(
+                        infile_list=infile_list,
+                        outfile_list=outfile_list,
+                        template_name=template_name,
+                        allow_big_image=False,
+                        too_big_pix=1e4,
+                        overwrite=True,
+                    )
+                else:
+                    raise ValueError(f"postprocessing_method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             return ()
 
@@ -1405,6 +1739,7 @@ if casa_enabled:
                 target=None,
                 product=None,
                 config=None,
+                postprocessing_method="casa",
                 image_tag='linmos_aligned',  # 'sd_aligned'
                 weight_tag='weight_aligned',  # 'sd_weight_aligned'
                 out_tag='pbcorr_round',  # 'prepped_sd'
@@ -1418,6 +1753,9 @@ if casa_enabled:
             linear mosaic. Needs to be run separately for single dish and
             interferometer data.
             """
+
+            if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
+                raise ValueError(f"postprocessing_method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             # Set input and output directories and define output file
 
@@ -1440,7 +1778,9 @@ if casa_enabled:
             for this_part in mosaic_parts:
 
                 this_part_dict_in = self._fname_dict(
-                    target=this_part, config=config, product=product,
+                    target=this_part,
+                    config=config,
+                    product=product,
                     extra_ext=extra_ext_in,
                 )
 
@@ -1448,10 +1788,19 @@ if casa_enabled:
                 infile = indir + this_part_dict_in[image_tag]
                 weightfile = indir + this_part_dict_in[weight_tag]
 
-                infile_exists = os.path.isdir(infile)
-                weightfile_exists = os.path.isdir(weightfile)
+                infile_exists = check_files_exist(infile,
+                                                  postprocessing_method=postprocessing_method,
+                                                  )
+                weightfile_exists = check_files_exist(weightfile,
+                                                      postprocessing_method=postprocessing_method,
+                                                      )
 
                 if infile_exists and weightfile_exists:
+                    
+                    if postprocessing_method == "spectralcube":
+                        infile += ".fits"
+                        weightfile += ".fits"
+                    
                     infile_list.append(infile)
                     weightfile_list.append(weightfile)
                 else:
@@ -1473,17 +1822,34 @@ if casa_enabled:
             logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
             logger.info("")
 
-            logger.info("Using cmr.mosaic_aligned_data.")
+            logger.info("Using mosaic_aligned_data.")
             logger.info("Creating " + outfile)
             logger.info("Mosaicking original files " + str(infile_list))
             logger.info("Weighting by " + str(weightfile_list))
 
             if not self._dry_run:
-                cmr.mosaic_aligned_data(
-                    infile_list=infile_list,
-                    weightfile_list=weightfile_list,
-                    outfile=outdir + outfile,
-                    overwrite=True)
+                if postprocessing_method == "casa":
+                    cmr.mosaic_aligned_data(
+                        infile_list=infile_list,
+                        weightfile_list=weightfile_list,
+                        outfile=outdir + outfile,
+                        overwrite=True,
+                    )
+                elif postprocessing_method == "spectralcube":
+
+                    template_name = os.path.join(
+                        outdir, f"{target}_{config}_{product}_linmos_template.fits"
+                    )
+                    
+                    smr.mosaic_aligned_data(
+                        infile_list=infile_list,
+                        weightfile_list=weightfile_list,
+                        template_name=template_name,
+                        outfile=f"{outdir}{outfile}.fits",
+                        overwrite=True,
+                    )
+                else:
+                    raise ValueError(f"postprocessing_method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             return ()
 
@@ -1492,13 +1858,13 @@ if casa_enabled:
         # region Recipes execute a set of linked tasks for one data set.
 
         def recipe_prep_one_target(
-                self,
-                target=None,
-                product=None,
-                config=None,
-                check_files=True,
-                imaging_method='tclean',
-                trim_coarse_beam_edge_channels=False,
+            self,
+            target=None,
+            product=None,
+            config=None,
+            check_files=True,
+            imaging_method: str = "tclean",
+            postprocessing_method: str = "casa",
         ):
             """
             Recipe that takes data from imaging through all steps that
@@ -1533,7 +1899,7 @@ if casa_enabled:
                 product=product,
                 check_files=check_files,
                 imaging_method=imaging_method,
-                trim_coarse_beam_edge_channels=trim_coarse_beam_edge_channels,
+                postprocessing_method=postprocessing_method,
             )
 
             self.task_pbcorr(
@@ -1541,7 +1907,8 @@ if casa_enabled:
                 config=config,
                 product=product,
                 check_files=check_files,
-                imaging_method=imaging_method
+                imaging_method=imaging_method,
+                postprocessing_method=postprocessing_method,
             )
 
             self.task_round_beam(
@@ -1549,7 +1916,8 @@ if casa_enabled:
                 config=config,
                 product=product,
                 check_files=check_files,
-                imaging_method=imaging_method
+                imaging_method=imaging_method,
+                postprocessing_method=postprocessing_method,
             )
 
             if has_singledish and imaging_method not in ['sdintimaging']:
@@ -1557,7 +1925,8 @@ if casa_enabled:
                     target=target,
                     config=config,
                     product=product,
-                    check_files=check_files
+                    check_files=check_files,
+                    postprocessing_method=postprocessing_method,
                 )
 
             if is_part_of_mosaic:
@@ -1567,7 +1936,8 @@ if casa_enabled:
                     product=product,
                     check_files=check_files,
                     scale_by_noise=True,
-                    imaging_method=imaging_method
+                    imaging_method=imaging_method,
+                    postprocessing_method=postprocessing_method,
                 )
 
             if is_part_of_mosaic and has_singledish and imaging_method not in ['sdintimaging']:
@@ -1576,6 +1946,7 @@ if casa_enabled:
                     config=config,
                     product=product,
                     check_files=check_files,
+                    postprocessing_method=postprocessing_method,
                 )
 
             return ()
@@ -1586,6 +1957,7 @@ if casa_enabled:
                 product=None,
                 config=None,
                 imaging_method='tclean',
+                postprocessing_method='casa',
                 check_files=True,
                 extra_ext_in='',
                 extra_ext_out='',
@@ -1594,6 +1966,9 @@ if casa_enabled:
             Linearly mosaic a single target, performing the convolution,
             alignment, and mosaicking steps.
             """
+
+            if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
+                raise ValueError(f"postprocessing_method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             # Check that the target is a mosaic
 
@@ -1641,6 +2016,7 @@ if casa_enabled:
                 target=target,
                 product=product,
                 config=config,
+                postprocessing_method=postprocessing_method,
                 in_tag='pbcorr_round',
                 out_tag='linmos_commonres',
                 extra_ext_in=extra_ext_in,
@@ -1661,6 +2037,7 @@ if casa_enabled:
                 target=target,
                 product=product,
                 config=config,
+                postprocessing_method=postprocessing_method,
                 in_tags=in_tag_list,
                 out_tags=out_tag_list,
                 extra_ext_in=extra_ext_in,
@@ -1672,9 +2049,10 @@ if casa_enabled:
                 target=target,
                 product=product,
                 config=config,
-                image_tag='linmos_aligned',
-                weight_tag='weight_aligned',
-                out_tag='pbcorr_round',
+                postprocessing_method=postprocessing_method,
+                image_tag="linmos_aligned",
+                weight_tag="weight_aligned",
+                out_tag="pbcorr_round",
                 extra_ext_in=extra_ext_in,
                 extra_ext_out=extra_ext_out,
                 check_files=check_files,
@@ -1685,9 +2063,10 @@ if casa_enabled:
                     target=target,
                     product=product,
                     config=config,
-                    image_tag='sd_aligned',
-                    weight_tag='sd_weight_aligned',
-                    out_tag='prepped_sd',
+                    postprocessing_method=postprocessing_method,
+                    image_tag="sd_aligned",
+                    weight_tag="sd_weight_aligned",
+                    out_tag="prepped_sd",
                     extra_ext_in=extra_ext_in,
                     extra_ext_out=extra_ext_out,
                     check_files=check_files,
@@ -1702,6 +2081,7 @@ if casa_enabled:
                 config=None,
                 check_files=True,
                 ext_ext='',
+                postprocessing_method="casa",
         ):
             """
             Recipe that cleans up the output for one target, converting to
@@ -1709,72 +2089,43 @@ if casa_enabled:
             as a FITS file.
             """
 
+            if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
+                raise ValueError(f"postprocessing method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
+
             self.task_compress(
-                target=target, config=config, product=product,
-                check_files=check_files, do_pb_too=True,
+                target=target,
+                config=config,
+                product=product,
+                check_files=check_files,
+                postprocessing_method=postprocessing_method,
+                do_pb_too=True,
                 do_trimrind=True,
-                extra_ext_in=ext_ext, extra_ext_out=ext_ext
+                extra_ext_in=ext_ext,
+                extra_ext_out=ext_ext,
             )
 
             self.task_convert_units(
-                target=target, config=config, product=product,
+                target=target,
+                config=config,
+                product=product,
                 check_files=check_files,
-                extra_ext_in=ext_ext, extra_ext_out=ext_ext
+                postprocessing_method=postprocessing_method,
+                extra_ext_in=ext_ext,
+                extra_ext_out=ext_ext,
             )
 
             self.task_export_to_fits(
-                target=target, config=config, product=product,
-                check_files=check_files, do_pb_too=True,
-                extra_ext_in=ext_ext, extra_ext_out=ext_ext
+                target=target,
+                config=config,
+                product=product,
+                check_files=check_files,
+                postprocessing_method=postprocessing_method,
+                do_pb_too=True,
+                extra_ext_in=ext_ext,
+                extra_ext_out=ext_ext,
             )
 
             return ()
-
-        def recipe_convolve_to_scale(
-                self,
-                target=None,
-                product=None,
-                config=None,
-                ext_ext='',
-                export_to_fits=True,
-                check_files=True,
-        ):
-            """
-            Convolve a target, product, config combination to a succession
-            of angulars scale using the task that convolves to a round
-            beam.
-            """
-
-            res_list = self._kh.get_res_for_config(config)
-            if res_list is None:
-                logger.error("No target resolutions found for config " + config)
-                return ()
-
-            for this_res in res_list:
-                check_target_is_part, target_name = self._kh.is_target_in_mosaic(target, return_target_name=True)
-
-                # res_tag = self._kh.get_tag_for_res(this_res)
-                res_tag = utilsResolutions.get_tag_for_res(this_res)
-                res_arcsec = utilsResolutions.get_angular_resolution_for_res(this_res,
-                                                                             distance=self._kh.get_distance_for_target(
-                                                                                 target_name))
-
-                # Check if the requested beam is smaller than the current one
-
-                self.task_round_beam(
-                    target=target, config=config, product=product,
-                    in_tag='pbcorr_trimmed_k', out_tag='pbcorr_trimmed_k',
-                    extra_ext_in=ext_ext, extra_ext_out=ext_ext + '_res' + res_tag,
-                    force_beam_as=res_arcsec,
-                    check_files=check_files
-                )
-
-                if export_to_fits:
-                    self.task_export_to_fits(
-                        target=target, config=config, product=product,
-                        check_files=check_files, do_pb_too=True,
-                        extra_ext_in=ext_ext + '_res' + res_tag, extra_ext_out=ext_ext + '_res' + res_tag,
-                    )
 
         # endregion
 
@@ -1782,7 +2133,8 @@ if casa_enabled:
 
         def loop_postprocess(
                 self,
-                imaging_method: str = 'tclean',
+                imaging_method: str = "tclean",
+                postprocessing_method: str = "casa",
                 do_all: bool = False,
                 do_prep: bool = False,
                 do_feather: bool = False,
@@ -1804,6 +2156,8 @@ if casa_enabled:
             Args:
                 imaging_method (str, optional): Imaging method used. Should
                     be one of 'tclean', 'sdintimaging'. Defaults to 'tclean'.
+                postprocessing_method (str, optional): Postprocessing method.
+                    Should be one of 'casa', 'spectralcube'. Defaults to 'casa'.
                 do_all (bool, optional): If True, run all steps. Defaults to False.
                 do_prep (bool, optional): If True, run the preparation steps. Defaults to False.
                 do_feather (bool, optional): If True, run the feathering steps. Defaults to False.
@@ -1819,6 +2173,9 @@ if casa_enabled:
                 make_directories (bool, optional): If True, will make directories that don't already exist.
                     Defaults to True.
             """
+            
+            if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
+                raise ValueError(f"Postprocessing method must be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             if do_all:
                 do_prep = True
@@ -1890,8 +2247,8 @@ if casa_enabled:
                         product=this_product,
                         config=this_config,
                         check_files=True,
-                        trim_coarse_beam_edge_channels=trim_coarse_beam_edge_channels,
                         imaging_method=imaging_method_prep,
+                        postprocessing_method=postprocessing_method,
                     )
 
             # Feather the interferometer configuration data that has
@@ -1940,10 +2297,11 @@ if casa_enabled:
                             product=this_product,
                             config=this_config,
                             apodize=True,
-                            apod_ext='pb',
-                            extra_ext_out='_apod',
+                            apod_ext="pb",
+                            extra_ext_out="_apod",
                             check_files=True,
                             copy_weights=True,
+                            postprocessing_method=postprocessing_method,
                         )
 
                     if feather_noapod:
@@ -1952,13 +2310,13 @@ if casa_enabled:
                             product=this_product,
                             config=this_config,
                             apodize=False,
-                            extra_ext_out='',
+                            extra_ext_out="",
                             check_files=True,
                             copy_weights=True,
+                            postprocessing_method=postprocessing_method,
                         )
 
             # Mosaic the interferometer, single dish, and feathered data.
-
             if do_mosaic:
 
                 # Loop over interferometer configurations
@@ -1976,9 +2334,12 @@ if casa_enabled:
                     # astrometric grid).
 
                     self.recipe_mosaic_one_target(
-                        target=this_target, product=this_product, config=this_config,
+                        target=this_target,
+                        product=this_product,
+                        config=this_config,
                         check_files=True,
                         imaging_method=imaging_method,
+                        postprocessing_method=postprocessing_method,
                         extra_ext_in='',
                         extra_ext_out='',
                     )
@@ -1999,18 +2360,24 @@ if casa_enabled:
 
                     if feather_apod:
                         self.recipe_mosaic_one_target(
-                            target=this_target, product=this_product, config=this_config,
+                            target=this_target,
+                            product=this_product,
+                            config=this_config,
                             check_files=True,
-                            extra_ext_in='_apod',
-                            extra_ext_out='',
+                            postprocessing_method=postprocessing_method,
+                            extra_ext_in="_apod",
+                            extra_ext_out="",
                         )
 
                     if feather_noapod:
                         self.recipe_mosaic_one_target(
-                            target=this_target, product=this_product, config=this_config,
+                            target=this_target,
+                            product=this_product,
+                            config=this_config,
                             check_files=True,
-                            extra_ext_in='',
-                            extra_ext_out='',
+                            postprocessing_method=postprocessing_method,
+                            extra_ext_in="",
+                            extra_ext_out="",
                         )
 
             # This round of feathering targets only mosaicked data, and only if we haven't feathered before mosaicking.
@@ -2034,9 +2401,10 @@ if casa_enabled:
                             product=this_product,
                             config=this_config,
                             apodize=True,
-                            apod_ext='pb',
-                            extra_ext_out='_apod',
+                            apod_ext="pb",
+                            extra_ext_out="_apod",
                             check_files=True,
+                            postprocessing_method=postprocessing_method,
                         )
 
                     if feather_noapod:
@@ -2045,8 +2413,9 @@ if casa_enabled:
                             product=this_product,
                             config=this_config,
                             apodize=False,
-                            extra_ext_out='',
+                            extra_ext_out="",
                             check_files=True,
+                            postprocessing_method=postprocessing_method,
                         )
 
             # Trim and downsample the data, convert to Kelvin, etc.
@@ -2062,14 +2431,20 @@ if casa_enabled:
                     # config files
 
                     if imaging_method == 'sdintimaging':
-                        self.task_rename_sdintimaging(target=this_target, product=this_product, config=this_config,
-                                                      imaging_method=imaging_method)
+                        self.task_rename_sdintimaging(target=this_target, 
+                                                      product=this_product, 
+                                                      config=this_config,
+                                                      imaging_method=imaging_method,
+                                                      postprocessing_method=postprocessing_method,
+                                                      )
 
                     self.recipe_cleanup_one_target(
                         target=this_target,
                         product=this_product,
                         config=this_config,
-                        check_files=True)
+                        check_files=True,
+                        postprocessing_method=postprocessing_method,
+                    )
 
             # Build reports summarizing the properties of the final
             # postprocessed data.
