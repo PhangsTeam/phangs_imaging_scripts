@@ -12,11 +12,15 @@ from astropy.wcs.utils import proj_plane_pixel_scales
 from radio_beam import Beam
 from spectral_cube import SpectralCube, VaryingResolutionSpectralCube
 from spectral_cube.utils import NoBeamError
+from racs_tools import convolve_uv
 
 from . import __version__
 
 # Logging
 logger = logging.getLogger(__name__)
+
+# Suppress RACS-tools logging
+logging.getLogger("racs_tools").setLevel("CRITICAL")
 
 
 def create_large_fits(
@@ -231,7 +235,7 @@ def check_wcs_match(
     if cube1.shape != cube2.shape:
         logger.error("Shape mismatch!")
         return False
-    
+
     # Check spectral
     spectral_wcs_match = np.isclose(cube1.spectral_axis, cube2.spectral_axis).all()
     if not spectral_wcs_match:
@@ -398,7 +402,7 @@ def export_and_cleanup(
 def convolve_to_round_beam(
     infile: str | None = None,
     outfile: str | None = None,
-    convolve_fn: str = "convolve_fft",
+    convolve_fn: str = "convolve_uv",
     nan_treatment: str = "interpolate",
     force_beam: float | int | None = None,
     overwrite: bool = False,
@@ -410,9 +414,10 @@ def convolve_to_round_beam(
     Args:
         infile (str): Input file name
         outfile (str): Output file name
-        convolve_fn (str): Convolution function name. Either "convolve"
-            or "convolve_fft". Default is "convolve_fft".
-        nan_treatment (str): Treatment to use for nan values in convolution
+        convolve_fn (str): Convolution function name. "convolve_uv", "convolve"
+            or "convolve_fft". Default is "convolve_uv".
+        nan_treatment (str): Treatment to use for nan values in convolution.
+            Defaults to "interpolate". Only used for "convolve" or "convolve_fft".
         force_beam (float): Force beam to size in arcsec.
             Default is None, which does not force the beam to any particular
             size.
@@ -441,8 +446,7 @@ def convolve_to_round_beam(
     # This is a little different depending on whether the cube is a VaryingResolutionSpectralCube
     # or not
     if isinstance(cube, VaryingResolutionSpectralCube):
-        beam_idx = np.argmax([b.major.to(u.arcsec).value for b in cube.beams])
-        beam = cube.beams[beam_idx]
+        beam = cube.beams.common_beam()
     else:
         beam = cube.beam
 
@@ -453,11 +457,16 @@ def convolve_to_round_beam(
     pixel_scales = proj_plane_pixel_scales(cube.wcs.celestial) * u.deg
     pixel_as = [p.to(u.arcsec) for p in pixel_scales][0]
 
-    # Make the beam a little larger to avoid convolution artifacts
+    # If we're not convolving directly, then we need to pad out a little
+    # to avoid convolution artifacts
+    pad_value = 0
+    if convolve_fn not in ["convolve_uv"]:
+        pad_value = 2
+
     if force_beam is None:
-        target_bmaj = np.sqrt(bmaj**2 + (2.0 * pixel_as) ** 2)
+        target_bmaj = np.sqrt(bmaj**2 + (pad_value * pixel_as) ** 2)
     else:
-        min_bmaj = np.sqrt(bmaj**2 + (2.0 * pixel_as) ** 2)
+        min_bmaj = np.sqrt(bmaj**2 + (pad_value * pixel_as) ** 2)
         if force_beam < min_bmaj:
             logger.warning("Requested beam is too small for convolution.")
             return False
@@ -468,50 +477,161 @@ def convolve_to_round_beam(
 
     logger.info(f"Convolving to round beam - {str(target_beam)}")
 
-    if convolve_fn == "convolve":
-        conv_fn = convolve
-    elif convolve_fn == "convolve_fft":
-        conv_fn = convolve_fft
-    else:
-        raise ValueError(f"convolve_fn {convolve_fn} not recognized")
+    success = convolve_cube(
+        cube=cube,
+        target_beam=target_beam,
+        outfile=outfile,
+        convolve_fn=convolve_fn,
+        nan_treatment=nan_treatment,
+    )
 
+    return success
+
+
+def convolve_cube(
+    cube: SpectralCube | VaryingResolutionSpectralCube,
+    target_beam: Beam,
+    outfile: str | None = None,
+    convolve_fn: str = "convolve_uv",
+    nan_treatment: str = "interpolate",
+    dtype=None,
+):
+    """TODO"""
+
+    cube.allow_huge_operations = True
+
+    if outfile is None:
+        raise ValueError("Need to specify outfile")
+
+    # Create the header, including beam information
+    hdr = cube.header.copy()
+    hdr.update(target_beam.to_header_keywords())
+
+    hdr["BEAM"] = str(target_beam)
+
+    # Keep track of whether we're a cube or a 2D image
+    is_2d = cube.ndim == 2
+
+    # If dtype isn't specified, keep track of the original dtype since it can change during convolution
+    if dtype is None:
+        dtype = cube.unmasked_data[0, 0, 0].dtype
+
+    # Create empty output fits cube
+    create_large_fits(outfile, hdr)
+
+    if is_2d:
+        n_chan = 1
+    else:
+        n_chan = cube.shape[0]
+
+    # Arguments needed for the various convolution routines
     kwargs = {
         "nan_treatment": nan_treatment,
         "preserve_nan": True,
     }
 
-    # Keep track of the original dtype since it can change during convolution
-    orig_dtype = cube.unmasked_data[0, 0, 0].dtype
+    # Get pixel scales in arcsec
+    pixel_scales = proj_plane_pixel_scales(cube.wcs.celestial) * u.deg
+    dx, dy = [p.to(u.arcsec) for p in pixel_scales]
 
-    cube = cube.convolve_to(
-        target_beam,
-        convolve=conv_fn,
-        **kwargs,
-    )
+    with fits.open(outfile, mode="update") as hdu:
+        logger.info("Convolving cube channel-by-channel")
+        with ProgressBar(n_chan) as bar:
+            if is_2d:
+                # Do the actual convolution
+                if convolve_fn == "convolve_uv":
+                    # For convolve-uv, if we're in Jy/beam-like units then we need a beam ratio factor
+                    if cube.unit.is_equivalent(u.Jy / u.beam):
+                        beam_ratio_factor = (target_beam.sr / cube.beam.sr).value
+                    else:
+                        beam_ratio_factor = 1.0
 
-    # Because this operation can change the dtype, recreate the cube
-    # Do this channel-by-channel, to keep RAM usage low
-    if cube.unmasked_data[0, 0, 0].dtype != orig_dtype:
-        create_large_fits(
-            outfile,
-            cube.header,
-        )
+                    # Pull out the image for convolve_uv, keep NaNs tracked
+                    image = cube.unitless_filled_data[:]
+                    nan_mask = np.isnan(image)
 
-        with fits.open(outfile, mode="update") as hdu:
-            n_chan = hdu[0].data.shape[0]
+                    cube_conv, _ = convolve_uv.convolve(
+                        image=image,
+                        old_beam=cube.beam,
+                        new_beam=target_beam,
+                        dx=dx,
+                        dy=dy,
+                    )
+                    cube_conv[nan_mask] = np.nan
+                    cube_conv *= beam_ratio_factor
 
-            logger.info("Writing cube out channel-by-channel")
-            with ProgressBar(n_chan) as bar:
+                elif convolve_fn == "convolve":
+                    cube = cube.convolve_to(
+                        target_beam,
+                        convolve=convolve,
+                        **kwargs,
+                    )
+                    cube_conv = cube.unitless_filled_data[:]
+                elif convolve_fn == "convolve_fft":
+                    cube = cube.convolve_to(
+                        target_beam,
+                        convolve=convolve_fft,
+                        **kwargs,
+                    )
+                    cube_conv = cube.unitless_filled_data[:]
+                else:
+                    raise ValueError(f"Unknown convolution function {convolve_fn}")
+
+                # Put this into the data and write out
+                hdu[0].data = cube_conv.astype(dtype)
+                hdu.flush()
+                bar.update()
+
+            else:
                 for chan in range(n_chan):
-                    hdu[0].data[chan] = cube.unitless_filled_data[chan].astype(orig_dtype)
+                    chan_slice = cube[chan]
+
+                    # FIXME: This has been raised in https://github.com/radio-astro-tools/spectral-cube/issues/1016
+                    #  and should be removed once fixed (for the spectral-cube convolution)
+                    # Also make sure we're converting things correctly if we're in Jy/beam-like units
+                    if chan_slice.unit.is_equivalent(u.Jy / u.beam):
+                        beam_ratio_factor = (target_beam.sr / chan_slice.beam.sr).value
+                    else:
+                        beam_ratio_factor = 1.0
+
+                    # Do the actual convolution
+                    if convolve_fn == "convolve_uv":
+
+                        image = chan_slice.unitless_filled_data[:]
+                        nan_mask = np.isnan(image)
+
+                        chan_conv, _ = convolve_uv.convolve(
+                            image=image,
+                            old_beam=chan_slice.beam,
+                            new_beam=target_beam,
+                            dx=dx,
+                            dy=dy,
+                        )
+
+                        chan_conv[nan_mask] = np.nan
+
+                    elif convolve_fn == "convolve":
+                        chan_slice = chan_slice.convolve_to(
+                            target_beam,
+                            convolve=convolve,
+                            **kwargs,
+                        )
+                        chan_conv = chan_slice.unitless_filled_data[:]
+                    elif convolve_fn == "convolve_fft":
+                        chan_slice = chan_slice.convolve_to(
+                            target_beam,
+                            convolve=convolve_fft,
+                            **kwargs,
+                        )
+                        chan_conv = chan_slice.unitless_filled_data[:]
+                    else:
+                        raise ValueError(f"Unknown convolution function {convolve_fn}")
+
+                    # Put this into the data and write out
+                    chan_vals = chan_conv * beam_ratio_factor
+                    hdu[0].data[chan] = chan_vals.astype(dtype)
                     hdu.flush()
                     bar.update()
-
-    else:
-        cube.write(
-            outfile,
-            overwrite=True,
-        )
 
     return True
 
@@ -724,7 +844,6 @@ def trim_cube(
 
     # If we don't match, write out channel-by-channel
     if cube_final_dtype != orig_dtype:
-
         create_large_fits(
             outfile,
             cube.header,

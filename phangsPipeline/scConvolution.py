@@ -1,11 +1,15 @@
 import logging
+import os
 
 import astropy.units as u
 import numpy as np
 from astropy.convolution import Box1DKernel
 from astropy.io import fits
 from radio_beam import Beam
-from spectral_cube import SpectralCube, LazyMask, Projection
+from spectral_cube import LazyMask, Projection, SpectralCube
+
+from .scCubeRoutines import convolve_cube
+from .scDerivativeRoutines import channel_width
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +42,6 @@ def smooth_cube(
         coverage2dfile=None,
         dtype=np.float32,
         overwrite=True, 
-        huge_cube=False
     ):
     """
     Smooth an input cube to coarser angular or spectral
@@ -70,11 +73,21 @@ def smooth_cube(
             cube = SpectralCube.read(incube)
     else:
         logger.error("Input must be a SpectralCube object or a filename.")
+        return None
+
+    if outfile is None:
+        logger.error("Need to specify outfile")
+        return None
 
     # Allow huge operations. If the speed or segfaults become a huge
     # problem, we will adjust our strategy here.
 
     cube.allow_huge_operations = True
+
+    # If the file already exists and we're not overwriting, just return it
+    if not overwrite and os.path.exists(outfile):
+        logger.info("Output file exists and overwrite=False. Returning existing file.")
+        return cube
 
     # Check that only one target scale is set
     if (angular_resolution is not None) and (linear_resolution is not None):
@@ -123,14 +136,19 @@ def smooth_cube(
         if make_coverage_cube:
             if twod:
                 coverage = Projection(np.isfinite(hdulist[0].data)*1.0,
-                                      wcs=cube.wcs.celestial, header=cube.header,
-                                      beam=cube.beam)
+                                      wcs=cube.wcs.celestial, 
+                                      header=cube.header,
+                                      meta={'BUNIT': ' ', 'BTYPE': 'Coverage'},
+                                      beam=cube.beam,
+                                      )
             else:
                 coverage = SpectralCube(
                     np.isfinite(cube.unmasked_data[:])*1.0,
                     wcs=cube.wcs,
                     header=cube.header,
-                    meta={'BUNIT': ' ', 'BTYPE': 'Coverage'})
+                    meta={'BUNIT': ' ', 'BTYPE': 'Coverage'},
+                    beam=cube.beam,
+                )
                 coverage = \
                     coverage.with_mask(LazyMask(np.isfinite,cube=coverage))            
             
@@ -141,91 +159,42 @@ def smooth_cube(
 
         if delta > tol:
             logger.info("... proceeding with convolution.")
-            
-            # Channel-wise processing for large cubes
-            if huge_cube and not twod:
-                logger.info("... processing channel-by-channel")
-                
-                # Create output arrays
-                nchan = cube.shape[0]
-                output_data = np.zeros(cube.shape, dtype=dtype)
-                if make_coverage_cube:
-                    coverage_data = np.zeros(cube.shape, dtype=dtype)
-                
-                # Process each channel
-                for ichan in range(nchan):
-                    if ichan % 10 == 0:
-                        logger.info(f"... processing channel {ichan+1}/{nchan}")
-                    
-                    # Extract single channel as a Projection
-                    chan_slice = cube[ichan]
-                    
-                    # Convolve this channel
-                    convolved_chan = chan_slice.convolve_to(
-                        target_beam,
-                        nan_treatment=nan_treatment,
-                        allow_huge=True
-                    )
-                    
-                    # Store result (preserving NaNs)
-                    output_data[ichan] = np.where(
-                        np.isfinite(cube[ichan].value),
-                        convolved_chan.value,
-                        np.nan
-                    )
-                    
-                    # Process coverage if needed
-                    if make_coverage_cube:
-                        cov_chan_slice = coverage[ichan]
-                        convolved_cov = cov_chan_slice.convolve_to(
-                            target_beam,
-                            nan_treatment=nan_treatment,
-                            allow_huge=True
-                        )
-                        coverage_data[ichan] = np.where(
-                            np.isfinite(coverage[ichan].value),
-                            convolved_cov.value,
-                            np.nan
-                        )
-                
-                # Create output cube from processed data
-                # Update header with new beam information
-                new_header = cube.header.copy()
-                new_header.update(target_beam.to_header_keywords())
-                
-                cube = SpectralCube(
-                    data=output_data * cube.unit,
-                    wcs=cube.wcs,
-                    header=new_header
-                )
-                
-                if make_coverage_cube:
-                    cov_header = coverage.header.copy()
-                    cov_header.update(target_beam.to_header_keywords())
-                    coverage = SpectralCube(
-                        data=coverage_data,
-                        wcs=coverage.wcs,
-                        header=cov_header,
-                        meta={'BUNIT': ' ', 'BTYPE': 'Coverage'}
-                    )
-                    
 
-            else:
-                # Original approach for smaller cubes
-                cube = cube.convolve_to(target_beam,
-                                        nan_treatment=nan_treatment,
-                                        allow_huge=True)
-                if make_coverage_cube:
-                    coverage = coverage.convolve_to(target_beam,
-                                                    nan_treatment=nan_treatment,
-                                                    allow_huge=True)
+            # Convolve the cube
+            convolve_cube(
+                cube=cube,
+                target_beam=target_beam,
+                outfile=outfile,
+                convolve_fn="convolve_fft",
+                nan_treatment=nan_treatment,
+                dtype=dtype,
+            )
+            
+            # If selected, convolve coverage
+            if make_coverage_cube:
+                convolve_cube(
+                    cube=coverage,
+                    target_beam=target_beam,
+                    outfile=coveragefile,
+                    convolve_fn="convolve_fft",
+                    nan_treatment=nan_treatment,
+                    dtype=dtype,
+                )
 
         if np.abs(delta) < tol:
             logger.info("... current resolution meets tolerance.")
 
+            cube.write(outfile,
+                       overwrite=True,
+                       )
+            if make_coverage_cube:
+                coverage.write(coveragefile,
+                               overwrite=True,
+                               )
+
         if delta < -1.0*tol:
             logger.info("... resolution cannot be matched. Returning")
-            return(None)
+            return None
 
     # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
     # Spectral convolution
@@ -234,49 +203,50 @@ def smooth_cube(
     # This is only a boxcar smooth right now and does not downsample
     # or update the header.
 
-    if velocity_resolution is not None and twod == False:
+    if velocity_resolution is not None and not twod:
         if type(velocity_resolution) is str:
             velocity_resolution = u.Quantity(velocity_resolution)
 
-        dv = scdr.channel_width(cube)
+        dv = channel_width(cube)
         nChan = (velocity_resolution / dv).to(u.dimensionless_unscaled).value
         if nChan > 1:
+            cube = SpectralCube.read(outfile)
+            cube.allow_huge_operations = True
+            
             cube = cube.spectral_smooth(Box1DKernel(nChan))
+
+            cube.write(outfile,
+                       overwrite=True,
+                       )
+
             if make_coverage_cube:
+
+                coverage = SpectralCube.read(coveragefile)
+                coverage.allow_huge_operations = True
+
                 coverage = coverage.spectral_smooth(Box1DKernel(nChan))
 
-    # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
-    # Write or return as requested
-    # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
+                coverage.write(coveragefile,
+                               overwrite=True,
+                               )
 
-    if outfile is not None:
-        if not twod:
-            import os
-            nchan, ny, nx = cube.shape
-            hdr = cube.header.copy()
-            if overwrite and os.path.exists(outfile):
-                os.remove(outfile)
-            fits.PrimaryHDU(np.zeros((nchan, ny, nx), dtype=dtype),
-                            header=hdr).writeto(outfile)
-            with fits.open(outfile, mode='update', memmap=True) as hdul:
-                for i in range(nchan):
-                    hdul[0].data[i] = cube.unitless_filled_data[i].astype(dtype)
-                hdul.flush()
-        else:
-            hdu = fits.PrimaryHDU(np.array(cube.filled_data[:], dtype=dtype),
-                                  header=cube.header)
-            hdu.writeto(outfile, overwrite=overwrite)
-        if make_coverage_cube:
-            if coveragefile is not None:
-                hdu = fits.PrimaryHDU(np.array(coverage.filled_data[:], dtype=dtype),
-                                      header=coverage.header)
-                hdu.writeto(coveragefile, overwrite=overwrite)
-            if collapse_coverage and twod==False:
-                if coveragefile and not coverage2dfile:
-                    coverage2dfile = coveragefile.replace('.fits','2d.fits')
-                coverage_collapser(coverage,
-                                   coverage2dfile=coverage2dfile,
-                                   overwrite=overwrite)
-                # coverage.write(coveragefile, overwrite=overwrite)
+    # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
+    # Return as requested
+    # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
+    
+    cube = SpectralCube.read(outfile)
+    cube.allow_huge_operations = True
 
-    return(cube)
+    if make_coverage_cube and collapse_coverage and not twod:
+        if coveragefile and not coverage2dfile:
+            coverage2dfile = coveragefile.replace(".fits", "2d.fits")
+
+        coverage = SpectralCube.read(coveragefile)
+        coverage.allow_huge_operations = True
+
+        coverage_collapser(coverage,
+                           coverage2dfile=coverage2dfile,
+                           overwrite=True,
+                           )
+
+    return cube

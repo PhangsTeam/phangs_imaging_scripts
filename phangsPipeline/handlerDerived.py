@@ -725,10 +725,6 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
             else:
 
-                huge_cube = os.path.getsize(indir + input_file) >= 2880*2880*393
-                if huge_cube:
-                    logger.info(f"Setting huge_cube to {huge_cube} for channel-wise processing.")
-
                 if 'tol' in convolve_kwargs:
                     tol = convolve_kwargs['tol']
 
@@ -742,8 +738,8 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                                 tol=tol, nan_treatment=nan_treatment,
                                 make_coverage_cube=True, coveragefile=outdir + coveragefile,
                                 collapse_coverage=True, coverage2dfile=outdir + coverage2dfile,
-                                overwrite=overwrite, 
-                                huge_cube=huge_cube)
+                                overwrite=overwrite,
+                                )
 
                 if res_type == 'phys':
                     this_distance = self._kh.get_distance_for_target(target)
@@ -757,8 +753,8 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                                 tol=tol, nan_treatment=nan_treatment,
                                 make_coverage_cube=True, coveragefile=outdir + coveragefile,
                                 collapse_coverage=True,
-                                overwrite=overwrite, 
-                                huge_cube=huge_cube)
+                                overwrite=overwrite,
+                                )
 
         return ()
 
