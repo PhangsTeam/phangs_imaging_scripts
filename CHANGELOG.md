@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add tests for scMoments, and tidy up formatting (#389).
 - Speed up sdintimaging by replacing feather with custom uvcombine tasks (#376).
 - Add tests for utilsResolutions, and tidy up formatting (#390).
+- Improved convolution with spectral-cube, including new analytic support for small kernels (#385).
 
 ### Changed
 
@@ -34,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Speed up sdintimaging by removing unneeded repeated slow operations (#376).
 - Replaced analysisUtils MRS calculation with bespoke version, that accounts properly for concatenated observations (#393).
 - Updated default values for setting automatic multiscales (#393).
+- Use spectral-cube common beam calculations for common beams (#385).
 
 ### Fixed
 
