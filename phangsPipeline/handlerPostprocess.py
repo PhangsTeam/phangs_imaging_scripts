@@ -1993,8 +1993,8 @@ if casa_enabled:
                         continue
 
                     # Skip if we're not feathering before mosaic
-                    if do_feather and not feather_before_mosaic:
-                        logger.debug("Skipping " + this_target + " because feather_before_mosaic is False.")
+                    if not (do_feather and feather_before_mosaic):
+                        logger.debug("Skipping " + this_target + " because feather products were not made before mosaicking.")
                         continue
 
                     if feather_apod:
