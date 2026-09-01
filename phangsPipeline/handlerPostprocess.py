@@ -544,6 +544,7 @@ if casa_enabled:
                 config=None,
                 imaging_method='tclean',
                 postprocessing_method="casa",
+                convolve_method: str = "convolve_fft",
                 in_tag='pbcorr',
                 out_tag='pbcorr_round',
                 extra_ext_in='',
@@ -610,6 +611,7 @@ if casa_enabled:
                         infile=f"{indir}{infile}.fits",
                         outfile=f"{outdir}{outfile}.fits",
                         force_beam=force_beam_as,
+                        convolve_fn=convolve_method,
                         overwrite=True,
                     )
             
@@ -1491,6 +1493,7 @@ if casa_enabled:
                 product=None,
                 config=None,
                 postprocessing_method="casa",
+                convolve_method="convolve_fft",
                 in_tag='pbcorr_round',
                 out_tag='linmos_commonres',
                 extra_ext_in='',
@@ -1568,8 +1571,6 @@ if casa_enabled:
             # number of pixels added to the greatest
             # common beam for calculating the target
             # resolution) and the target resolution.
-
-            pixel_padding = 2.0
             target_res = None
 
             # TBD - check override dict for target
@@ -1577,6 +1578,9 @@ if casa_enabled:
 
             if not self._dry_run:
                 if postprocessing_method == "casa":
+
+                    pixel_padding = 2.0
+
                     cmr.common_res_for_mosaic(
                         infile_list=infile_list,
                         outfile_list=outfile_list,
@@ -1590,8 +1594,8 @@ if casa_enabled:
                         infile_list=infile_list,
                         outfile_list=outfile_list,
                         do_convolve=True,
+                        convolve_fn=convolve_method,
                         target_res=target_res,
-                        pixel_padding=pixel_padding,
                         overwrite=True,
                     )
                 else:
@@ -1865,6 +1869,7 @@ if casa_enabled:
             check_files=True,
             imaging_method: str = "tclean",
             postprocessing_method: str = "casa",
+            convolve_method: str = "convolve_fft",
         ):
             """
             Recipe that takes data from imaging through all steps that
@@ -1918,6 +1923,7 @@ if casa_enabled:
                 check_files=check_files,
                 imaging_method=imaging_method,
                 postprocessing_method=postprocessing_method,
+                convolve_method=convolve_method,
             )
 
             if has_singledish and imaging_method not in ['sdintimaging']:
@@ -1958,6 +1964,7 @@ if casa_enabled:
                 config=None,
                 imaging_method='tclean',
                 postprocessing_method='casa',
+                convolve_method="convolve_fft",
                 check_files=True,
                 extra_ext_in='',
                 extra_ext_out='',
@@ -2017,6 +2024,7 @@ if casa_enabled:
                 product=product,
                 config=config,
                 postprocessing_method=postprocessing_method,
+                convolve_method=convolve_method,
                 in_tag='pbcorr_round',
                 out_tag='linmos_commonres',
                 extra_ext_in=extra_ext_in,
@@ -2135,6 +2143,7 @@ if casa_enabled:
                 self,
                 imaging_method: str = "tclean",
                 postprocessing_method: str = "casa",
+                convolve_method: str = "convolve_fft",
                 do_all: bool = False,
                 do_prep: bool = False,
                 do_feather: bool = False,
@@ -2158,6 +2167,9 @@ if casa_enabled:
                     be one of 'tclean', 'sdintimaging'. Defaults to 'tclean'.
                 postprocessing_method (str, optional): Postprocessing method.
                     Should be one of 'casa', 'spectralcube'. Defaults to 'casa'.
+                convolve_method (str, optional): Convolution method. Should be
+                    one of 'convolve', 'convolve_fft', 'convolve_uv'.
+                    Defaults to 'convolve_fft'.
                 do_all (bool, optional): If True, run all steps. Defaults to False.
                 do_prep (bool, optional): If True, run the preparation steps. Defaults to False.
                 do_feather (bool, optional): If True, run the feathering steps. Defaults to False.
@@ -2249,6 +2261,7 @@ if casa_enabled:
                         check_files=True,
                         imaging_method=imaging_method_prep,
                         postprocessing_method=postprocessing_method,
+                        convolve_method=convolve_method,
                     )
 
             # Feather the interferometer configuration data that has
@@ -2340,6 +2353,7 @@ if casa_enabled:
                         check_files=True,
                         imaging_method=imaging_method,
                         postprocessing_method=postprocessing_method,
+                        convolve_method=convolve_method,
                         extra_ext_in='',
                         extra_ext_out='',
                     )
