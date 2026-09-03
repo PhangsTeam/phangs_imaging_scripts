@@ -1,187 +1,293 @@
-"""Utilities for angular and physical resolutions.
-"""
-
 import re
-import numpy as np
 
-regex_psep = re.compile(r'([0-9eE.+-]+)(p)([0-9eE.+-]+)(.*)', re.IGNORECASE)
-regex_nounit = re.compile(r'^([0-9eE.+-]+)$', re.IGNORECASE)
-regex_arcsec = re.compile(r'^([0-9eE.+-]+)[ \t]*(arcsec|\")$', re.IGNORECASE)
-regex_arcmin = re.compile(r'^([0-9eE.+-]+)[ \t]*(arcmin|\')$', re.IGNORECASE)
-regex_degree = re.compile(r'^([0-9eE.+-]+)[ \t]*(degree|deg)$', re.IGNORECASE)
-regex_pc = re.compile(r'^([0-9eE.+-]+)[ \t]*(parsec|pc)$', re.IGNORECASE)
-regex_kpc = re.compile(r'^([0-9eE.+-]+)[ \t]*(kpc)$', re.IGNORECASE)
-regex_Mpc = re.compile(r'^([0-9eE.+-]+)[ \t]*(Mpc)$', re.IGNORECASE)
+import astropy.units as u
 
-def is_angular_resolution(res, return_value=False):
-    """Check if a string is an angular resolution. 
-    
-    If return_value then return the value in arcsec as well. 
-    
-    If a string without any unit is given, we assume it is angular resolution.
+regex_psep = re.compile(
+    pattern=r"([0-9eE.+-]+)(p)([0-9eE.+-]+)(.*)",
+    flags=re.IGNORECASE,
+)
+
+
+def is_astropy_unit_equivalent(
+    res: str | float | int | u.Quantity,
+    unit: u.Unit,
+):
+    """Check if a string is a valid generic unit equivalent.
+
+    Args:
+        res (str|float|int|u.Quantity): Input resolution.
+            Can be a string with units like '5.0arcsec', '5.0pc', or a float/int which is assumed to be
+            in the specified unit.
+        unit (u.Unit): The unit to check against.
+
+    Returns:
+        bool, float | None: A tuple where the first element is True if the input is equivalent to
+            the specified unit, and False otherwise. The second element is the value converted to
+            the specified unit if equivalent, or None otherwise.
     """
-    out_flag = False
-    out_value = None
+
+    # Modify the string so astropy units is happy with it
     if isinstance(res, str):
+        # Strip out whitespace
         res = res.strip()
+
+        # If the input is like "5p00", we convert it to "5.00"
         if regex_psep.match(res):
-            res = regex_psep.sub(r'\1.\3\4', res) # if the input is like '5p00', we convert it to '5.00'
-        for regex_obj, mult_factor in list(zip([regex_nounit, regex_arcsec, regex_arcmin, regex_degree], [1.0, 1.0, 60.0, 3600.0])):
-            if regex_obj.match(res):
-                out_flag = True
-                out_value = float(regex_obj.search(res).group(1)) * mult_factor
+            res = regex_psep.sub(
+                repl=r"\1.\3\4",
+                string=res,
+            )
+
+        # Convert to astropy unit
+        res = u.Quantity(res)
+
+    # If float or int, assume the specified unit
+    elif isinstance(res, float) or isinstance(res, int):
+        res = res * unit
+
+    # If already a quantity, do nothing
+    elif isinstance(res, u.Quantity):
+        pass
+
     else:
-        if isinstance(res, float) or isinstance(res, int):
-            out_flag = True
-            out_value = float(res)
-    # 
-    if return_value:
-        return out_flag, out_value
+        raise TypeError("Input must be a string, float, int, or u.Quantity.")
+
+    if res.unit.is_equivalent(unit):
+        is_unit_equivalent = True
+        res_value = res.to(unit).value
+
     else:
-        return out_flag
+        is_unit_equivalent = False
+        res_value = None
+
+    return is_unit_equivalent, res_value
 
 
-def is_physical_resolution(res, return_value=False):
-    """Check if a string is a physical resolution. 
-    
-    If return_value then return the value in parsec as well. 
+def is_angular_resolution(
+    res: str | float | int | u.Quantity,
+    return_value: bool = False,
+):
+    """Check if a string is a valid angular resolution.
+
+    Args:
+        res (str|float|int|u.Quantity): Input resolution.
+            Can be a string with units like '5.0arcsec', '5.0arcmin', '5.0deg', or a float/int value in arcsec.
+        return_value (bool): If True, return the value in arcsec
+            Default is False.
     """
-    out_flag = False
-    out_value = None
-    if isinstance(res, str):
-        res = res.strip()
-        if regex_psep.match(res):
-            res = regex_psep.sub(r'\1.\3\4', res) # if the input is like '5p00', we convert it to '5.00'
-        for regex_obj, mult_factor in list(zip([regex_pc, regex_kpc, regex_Mpc], [1.0, 1e3, 1e6])):
-            if regex_obj.match(res):
-                out_flag = True
-                out_value = float(regex_obj.search(res).group(1)) * mult_factor
-    else:
-        if isinstance(res, float) or isinstance(res, int):
-            out_flag = True
-            out_value = float(res)
-    # 
+
+    is_ang_res, ang_res_arcsec = is_astropy_unit_equivalent(
+        res=res,
+        unit=u.arcsec,
+    )
+
     if return_value:
-        return out_flag, out_value
+        return is_ang_res, ang_res_arcsec
     else:
-        return out_flag
+        return is_ang_res
 
 
-def is_distance(distance, return_value=False):
-    """Check if a string is a distance ending with parsec units. 
-    
-    If return_value then return the value in Mega parsec. 
+def is_physical_resolution(
+    res: str | float | int | u.Quantity,
+    return_value: bool = False,
+):
+    """Check if a string is a physical resolution.
+
+    Args:
+        res (str|float|int|u.Quantity): Input resolution.
+            Can be a string with units like '5.0pc', '5.0kpc', '5.0Mpc', or a float/int value in parsec.
+        return_value (bool): If True, return the value in parsec
+            Default is False.
     """
-    out_flag = False
-    out_value = None
-    if isinstance(distance, str):
-        for regex_obj, mult_factor in list(zip([regex_pc, regex_kpc, regex_Mpc], [1e-6, 1e-3, 1.0])):
-            if regex_obj.match(distance):
-                out_flag = True
-                out_value = float(regex_obj.search(distance).group(1)) * mult_factor # return value in units of Mpc
-    else:
-        if isinstance(distance, float) or isinstance(distance, int):
-            out_flag = True
-            out_value = float(distance)
-    # 
-    if return_value:
-        return out_flag, out_value
-    else:
-        return out_flag
-    
 
-def get_tag_for_angular_resolution(res):
+    is_phys_res, phys_res_pc = is_astropy_unit_equivalent(
+        res=res,
+        unit=u.pc,
+    )
+
+    if return_value:
+        return is_phys_res, phys_res_pc
+    else:
+        return is_phys_res
+
+
+def is_distance(
+    distance: str | float | int | u.Quantity,
+    return_value: bool = False,
+):
+    """Check if a string is a distance ending with parsec units.
+
+    Args:
+        distance (str|float|int|u.Quantity): Input distance.
+            Can be a string with units like '5.0pc', '5.0kpc', '5.0Mpc', or a float/int value in Mpc.
+        return_value (bool): If True, return the value in Mpc
+            Default is False.
+    """
+
+    is_dist, dist_mpc = is_astropy_unit_equivalent(
+        res=distance,
+        unit=u.Mpc,
+    )
+
+    if return_value:
+        return is_dist, dist_mpc
+    else:
+        return is_dist
+
+
+def get_tag_for_angular_resolution(
+    res: str | float | int | u.Quantity,
+    sig_figs: int = 2,
+):
     """Input an angular resolution string or value, output a formatted string tag to be used in filenames.
+
+    Args:
+        res (str|float|int|u.Quantity): Input angular resolution.
+        sig_figs (int): Number of significant figures to use in the output.
     """
-    check_flag, res_value = is_angular_resolution(res, return_value=True)
-    if check_flag:
-        sigfigs = 2
-        fmt_str = '{:.%df}'%(sigfigs)
-        res_str = fmt_str.format(np.round(res_value, decimals=sigfigs)).replace('.','p')
-        return res_str
-    else:
-        raise Exception('The input resolution string "'+str(res)+'" is not an angular resolution!')
-        return None
+
+    is_ang_res, ang_res_value = is_angular_resolution(
+        res=res,
+        return_value=True,
+    )
+    if not is_ang_res:
+        raise ValueError(
+            f"Input resolution string {res} it not a valid angular resolution"
+        )
+
+    res_str = f"{ang_res_value:.{sig_figs}f}".replace(".", "p")
+
+    return res_str
 
 
-def get_tag_for_physical_resolution(res):
+def get_tag_for_physical_resolution(
+    res: str | float | int | u.Quantity,
+    sig_figs: int = 0,
+):
     """Input a physical resolution string or value, output a formatted string tag to be used in filenames.
+
+    Args:
+        res (str|float|int|u.Quantity): Input physical resolution.
+        sig_figs (int): Number of significant figures to use in the output.
     """
-    check_flag, res_value = is_physical_resolution(res, return_value=True)
-    if check_flag:
-        sigfigs = 0
-        fmt_str = '{:.%df}'%(sigfigs)
-        res_str = fmt_str.format(np.round(res_value, decimals=sigfigs)).replace('.','p') + "pc"
-        return res_str
-    else:
-        raise Exception('The input resolution string "'+str(res)+'" is not a physical resolution!')
-        return None
+
+    is_phys_res, phys_res_value = is_physical_resolution(
+        res=res,
+        return_value=True,
+    )
+    if not is_phys_res:
+        raise ValueError(
+            f"Input resolution string {res} is not a valid physical resolution"
+        )
+
+    res_str = f"{phys_res_value:.{sig_figs}f}pc".replace(".", "p")
+
+    return res_str
 
 
-def get_tag_for_res(res):
-    """Return a tag string to be used in filenames given a resolution string like either '5.0arcsec' 
-         or '80pc', or a resolution value in arcsec. 
-       
-       The returned tag string is always formatted like '5p00' for an angular resolution, or 
-         like '80pc' for a physical resolution.
+def get_tag_for_res(
+    res: str | float | int | u.Quantity,
+    angular_res_sig_figs: int = 2,
+    physical_res_sig_figs: int = 0,
+):
+    """Return a tag string to be used in filenames given a resolution string
+
+    This is the general task that distinguishes between angular and physical resolutions.
+    The input resolution can be a string like either '5.0arcsec' or '80pc', an u.Quantity,
+    or a float/int. If a float/int, this is assumed to be in arcsec.
+
+    By default, the returned tag string is formatted like '5p00' for an angular resolution, or
+    like '80pc' for a physical resolution.
+
+    Args:
+        res (str|float|int|u.Quantity): Input resolution.
+        angular_res_sig_figs (int): Number of significant figures to use in the output for angular resolutions.
+            Defaults to 2.
+        physical_res_sig_figs (int): Number of significant figures to use in the output for physical resolutions.
+            Defaults to 0.
     """
-    if is_angular_resolution(res):
-        return get_tag_for_angular_resolution(res)
-    elif is_physical_resolution(res):
-        return get_tag_for_physical_resolution(res)
+    if is_angular_resolution(res=res):
+        tag = get_tag_for_angular_resolution(
+            res=res,
+            sig_figs=angular_res_sig_figs,
+        )
+    elif is_physical_resolution(res=res):
+        tag = get_tag_for_physical_resolution(
+            res=res,
+            sig_figs=physical_res_sig_figs,
+        )
     else:
-        raise Exception('The input resolution string "'+str(res)+'" seems neither an angular nor a physical resolution!')
-        return None
+        raise ValueError(
+            f"Input resolution string {res} is not a valid physical or angular resolution"
+        )
+
+    return tag
 
 
-def get_angular_resolution_from_physical_resolution(res, distance):
+def get_angular_resolution_from_physical_resolution(
+    res: str | float | int | u.Quantity,
+    distance: str | float | int | u.Quantity,
+):
     """Return the angular resolution in arcsec, given a physical resolution and a distance.
-    
-    The input physical resolution can either be a string or a value in parsec. 
-    
-    The input distance can also either be a string or a value in Mpc. 
+
+    Args:
+        res (str|float|int|u.Quantity): Input physical resolution.
+        Can be a string with units like '5.0pc', '5.0kpc', '5.0Mpc', or a float/int value in parsec.
+        distance (str|float|int|u.Quantity): Input distance.
+            Can be a string with units like '5.0Mpc', '5.0kpc', '5.0pc', or a float/int value in Mpc.
     """
-    # 
-    res_check_flag, res_value_in_pc = is_physical_resolution(res, return_value=True)
-    # 
-    distance_check_flag, distance_value_in_Mpc = is_distance(distance, return_value=True)
-    # 
-    if res_check_flag and distance_check_flag:
-        kpc2arcsec = 1e-3/distance_value_in_Mpc/np.pi*180.0*3600.0
-        return res_value_in_pc / 1e3 * kpc2arcsec
-        # res_value_in_arcsec = res_value_in_pc / 1e3 * kpc2arcsec
-        # res_value_in_pc = res_value_in_arcsec * (distance_value_in_Mpc*1e6) * np.pi / 180.0 / 3600.0
-    else:
-        raise Exception('The input resolution "'+str(res)+'" and distance "'+str(distance)+'" seem incorrect. Please input a physical resolution in parsec and a distance in parsec!')
-        return None
+
+    is_phys_res, phys_res_pc = is_physical_resolution(
+        res,
+        return_value=True,
+    )
+    if not is_phys_res:
+        raise ValueError(
+            f"Input resolution string {res} is not a valid physical resolution"
+        )
+
+    is_dist, dist_mpc = is_distance(
+        distance,
+        return_value=True,
+    )
+    if not is_dist:
+        raise ValueError(f"Input distance string {distance} is not a valid distance")
+
+    ang_res_arcsec = (phys_res_pc / dist_mpc / 1e6 * u.rad).to(u.arcsec).value
+
+    return ang_res_arcsec
 
 
-def get_angular_resolution_for_res(res, distance=None):
-    """Return an angular resolution value in units of arcsec given a resolution string like either '5.0arcsec' 
-         or '80pc', or a resolution value in arcsec. 
+def get_angular_resolution_for_res(
+    res: str | float | int | u.Quantity,
+    distance: str | float | int | u.Quantity | None = None,
+):
+    """Return an angular resolution value in units of arcsec
+
+    There are two paths here: The first is passing an angular resolution, in which case that will be returned.
+    The second is passing a physical resolution, in which case a distance must also be provided, and the angular
+    resolution will be calculated from the physical resolution and distance.
+
+    Args:
+        res (str|float|int|u.Quantity): Input resolution, either angular or physical.
+        distance (str|float|int|u.Quantity|None): Input distance, required if res is a physical resolution.
+            Defaults to None
+
     """
-    res_check_flag, res_value_in_arcsec = is_angular_resolution(res, return_value=True)
-    if res_check_flag:
-        #print('res "'+str(res)+'" is an angular resolution')
-        return res_value_in_arcsec
+    is_ang_res, ang_res_arcsec = is_angular_resolution(res, return_value=True)
+
+    # If we have an angular resolution, do nothing
+    if is_ang_res:
+        pass
+
+    # Otherwise, calculate from physical distance and physical resolution
     else:
-        #print('res "'+str(res)+'" is a physical resolution')
+
         if distance is None:
-            raise Exception('Need a distance for calculating angular resolution from the given physical resolution of '+str(res))
-        return get_angular_resolution_from_physical_resolution(res, distance)
+            raise ValueError(
+                "Distance must be provided if res is a physical resolution"
+            )
 
+        ang_res_arcsec = get_angular_resolution_from_physical_resolution(res, distance)
 
-
-#def get_angular_resolution_for_config(config):
-#    """Return the rough angular resolution range for a given config like '12m+7m', '12m', '7m'.
-#    """
-#    WIP
-
-
-
-
-
-
-
-
-
+    return ang_res_arcsec

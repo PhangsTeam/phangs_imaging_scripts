@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added spectral-cube equivalent routines for postprocessing (#371).
 - Add tests for scMoments, and tidy up formatting (#389).
 - Speed up sdintimaging by replacing feather with custom uvcombine tasks (#376).
+- Add tests for utilsResolutions, and tidy up formatting ().
 
 ### Changed
 
