@@ -1568,8 +1568,6 @@ if casa_enabled:
             # number of pixels added to the greatest
             # common beam for calculating the target
             # resolution) and the target resolution.
-
-            pixel_padding = 2.0
             target_res = None
 
             # TBD - check override dict for target
@@ -1577,6 +1575,9 @@ if casa_enabled:
 
             if not self._dry_run:
                 if postprocessing_method == "casa":
+
+                    pixel_padding = 2.0
+
                     cmr.common_res_for_mosaic(
                         infile_list=infile_list,
                         outfile_list=outfile_list,
@@ -1591,7 +1592,6 @@ if casa_enabled:
                         outfile_list=outfile_list,
                         do_convolve=True,
                         target_res=target_res,
-                        pixel_padding=pixel_padding,
                         overwrite=True,
                     )
                 else:

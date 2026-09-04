@@ -4,16 +4,15 @@ import os
 
 import astropy.units as u
 import numpy as np
-from astropy.convolution import convolve, convolve_fft
 from astropy.io import fits
 from astropy.utils.console import ProgressBar
 from astropy.wcs import WCS
 from astropy.wcs.utils import proj_plane_pixel_scales
-from radio_beam import Beam
+from radio_beam import Beam, Beams
 from reproject.mosaicking import find_optimal_celestial_wcs
 from spectral_cube import SpectralCube
 
-from .scCubeRoutines import create_large_fits, reproject_to_other_wcs
+from .scCubeRoutines import convolve_cube, create_large_fits, reproject_to_other_wcs
 from .scNoiseRoutines import mad_zero_centered
 
 # Logging
@@ -91,9 +90,8 @@ def common_res_for_mosaic(
     infile_list: list | None = None,
     outfile_list: list | dict | None = None,
     target_res: int | float | None = None,
-    pixel_padding: int | float = 2.0,
     do_convolve: bool = True,
-    convolve_fn: str = "convolve_fft",
+    convolve_fn: str = "convolve_uv",
     nan_treatment: str = "interpolate",
     overwrite: bool = False,
 ):
@@ -104,15 +102,12 @@ def common_res_for_mosaic(
         infile_list (list|None): List of input image files.
         outfile_list (list|dict|None): List or dictionary of output image files.
         target_res (int|float|None): Target resolution in arcsec.
-        pixel_padding (int|float): Pixel padding to add to the
-            largest common beam (in quadrature) to ensure robust convolution.
-            Defaults to 2 pixels.
         do_convolve (bool): if True, do convolution. Else just
             calculates and returns target resolution. Defaults to True.
-        convolve_fn (str): Convolve function to use. Should be either
-            "convolve" or "convolve_fft". Defaults to "convolve_fft".
+        convolve_fn (str): Convolution function name. "convolve_uv", "convolve"
+            or "convolve_fft". Default is "convolve_uv".
         nan_treatment (str): Treatment to use for nan values in convolution.
-            Defaults to "interpolate".
+            Defaults to "interpolate". Only used for "convolve" or "convolve_fft".
         overwrite (bool): if True, overwrite existing files. Defaults
             to False.
 
@@ -171,8 +166,8 @@ def common_res_for_mosaic(
     if target_res is None:
         logger.debug("Calculating target resolution ... ")
 
-        # Keep track of beam major axis and pixel sizes
-        bmaj_list = []
+        # Keep track of beams and pixel sizes
+        beam_list = []
         pix_list = []
 
         for this_infile in infile_list:
@@ -183,14 +178,23 @@ def common_res_for_mosaic(
             pixel_scales = proj_plane_pixel_scales(cube.wcs.celestial) * u.deg
             pixel_as = [p for p in pixel_scales][0]
 
-            bmaj = cube.beam.major
-
-            bmaj_list.append(bmaj.to(u.arcsec).value)
+            beam_list.append(cube.beam)
             pix_list.append(pixel_as.to(u.arcsec).value)
 
-        max_bmaj = np.max(bmaj_list)
+        # Calculate a common beam
+        beam_list = Beams(beams=beam_list)
+        common_beam = beam_list.common_beam()
+        bmaj = common_beam.major.to(u.arcsec).value
+
         max_pix = np.max(pix_list)
-        target_bmaj = np.sqrt(max_bmaj**2 + (pixel_padding * max_pix) ** 2) * u.arcsec
+
+        # If we're not convolving directly, then we need to pad out a little
+        # to avoid convolution artifacts
+        pixel_padding = 0
+        if convolve_fn not in ["convolve_uv"]:
+            pixel_padding = 2
+
+        target_bmaj = np.sqrt(bmaj**2 + (pixel_padding * max_pix) ** 2) * u.arcsec
 
         # Ensure we just have a single quantity value here
         if not isinstance(target_bmaj, u.Quantity):
@@ -224,53 +228,13 @@ def common_res_for_mosaic(
         cube = SpectralCube.read(this_infile)
         cube.allow_huge_operations = True
 
-        if convolve_fn == "convolve":
-            conv_fn = convolve
-        elif convolve_fn == "convolve_fft":
-            conv_fn = convolve_fft
-        else:
-            raise ValueError(f"convolve_fn {convolve_fn} not recognized")
-
-        kwargs = {
-            "nan_treatment": nan_treatment,
-            "preserve_nan": True,
-        }
-
-        # Keep track of the original dtype since it can change during convolution
-        orig_dtype = cube.unmasked_data[0, 0, 0].dtype
-
-        cube = cube.convolve_to(
-            target_beam,
-            convolve=conv_fn,
-            **kwargs,
+        convolve_cube(
+            cube=cube,
+            target_beam=target_beam,
+            outfile=this_outfile,
+            convolve_fn=convolve_fn,
+            nan_treatment=nan_treatment,
         )
-
-        cube_dtype = cube.unmasked_data[0, 0, 0].dtype
-
-        # If dtype has changed, recreate the cube
-        if cube_dtype != orig_dtype:
-
-            # Do this channel by channel to avoid needing a lot of RAM
-            create_large_fits(
-                this_outfile,
-                cube.header,
-            )
-
-            with fits.open(this_outfile, mode="update") as hdu:
-                n_chan = hdu[0].data.shape[0]
-
-                logger.info("Writing cube out channel-by-channel")
-                with ProgressBar(n_chan) as bar:
-                    for chan in range(n_chan):
-                        hdu[0].data[chan] = cube.unitless_filled_data[chan].astype(orig_dtype)
-                        hdu.flush()
-                        bar.update()
-
-        else:
-            cube.write(
-                this_outfile,
-                overwrite=True,
-            )
 
     return target_bmaj.value
 
@@ -901,7 +865,6 @@ def mosaic_aligned_data(
 
         # Make sure we have the beam and units right, and if not replace them
         for hdu in [sum_hdu, weight_hdu, mask_hdu, out_hdu]:
-
             keys_to_update = [
                 "BMAJ",
                 "BMIN",
@@ -911,7 +874,6 @@ def mosaic_aligned_data(
             ]
 
             for key in keys_to_update:
-
                 if key in hdu[0].header:
                     if hdu[0].header[key] != infile_cubes[0].header[key]:
                         hdu[0].header[key] = infile_cubes[0].header[key]
