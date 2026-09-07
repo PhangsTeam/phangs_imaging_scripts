@@ -1,4 +1,3 @@
-import inspect
 import logging
 import warnings
 
@@ -10,159 +9,153 @@ from . import scDerivativeRoutines as scdr
 
 warnings.filterwarnings("ignore")
 
-def _nicestr(quantity):
-    if quantity.value == int(quantity.value):
-        return(str(int(quantity.value))+' '+str(quantity.unit))
-    else:
-        return(str(quantity))
 
-def _func_and_kwargs_for_moment(moment_tag=None):
+def _func_and_kwargs_for_moment(
+    moment_tag: str | None = None,
+):
     """
     Return function name and defalt kwargs for a moment tag.
+
+    Args:
+        moment_tag (str): Moment tag to look up. Defaults to None, which will return None.
     """
 
-    func = None
-    kwargs = None
-    if moment_tag is None:
-        return(func,kwargs)
+    func_dict = {
+        None: None,
+        "failure_case": scdr.write_moment0,
+        "mom0": scdr.write_moment0,
+        "mom1": scdr.write_moment1,
+        "mom2": scdr.write_moment2,
+        "ew": scdr.write_ew,
+        "vquad": scdr.write_vquad,
+        "vpeak": scdr.write_vmax,
+        "tpeak": scdr.write_tmax,
+        "mom1wprior": scdr.write_moment1_hybrid,
+    }
+    kwargs_dict = {
+        None: None,
+        "failure_case": "not_kwargs",
+        "mom0": {"unit": u.K * u.km / u.s},
+        "mom1": {"unit": u.km / u.s},
+        "mom2": {"unit": u.km / u.s},
+        "ew": {"unit": u.km / u.s},
+        "vquad": {"unit": u.km / u.s},
+        "vpeak": {"unit": u.km / u.s},
+        "tpeak": {"unit": u.K},
+        "mom1wprior": {"unit": u.km / u.s},
+    }
 
-    if moment_tag == 'mom0':
-        func = scdr.write_moment0
-        kwargs ={'unit': u.K * u.km / u.s}
-    elif moment_tag == 'mom1':
-        func = scdr.write_moment1
-        kwargs = {'unit': u.km / u.s}
-    elif moment_tag == 'mom2':
-        func = scdr.write_moment2
-        kwargs = {'unit': u.km / u.s}
-    elif moment_tag == 'ew':
-        func = scdr.write_ew
-        kwargs = {'unit': u.km / u.s}
-    elif moment_tag == 'vquad':
-        func = scdr.write_vquad
-        kwargs = {'unit': u.km / u.s}
-    elif moment_tag == 'vpeak':
-        func = scdr.write_vmax
-        kwargs = {'unit': u.km / u.s}
-    elif moment_tag == 'tpeak':
-        func = scdr.write_tmax
-        kwargs = {'unit': u.K}
-    elif moment_tag == 'mom1wprior':
-        func = scdr.write_moment1_hybrid
-        kwargs = {'unit': u.km / u.s}
-    elif moment_tag == 'mom0flat':
-        func = scdr.write_moment0_flat
-        kwargs ={'unit': u.K * u.km / u.s}
+    func = func_dict.get(moment_tag, None)
+    kwargs = kwargs_dict.get(moment_tag, None)
 
-    return(func, kwargs)
+    return func, kwargs
 
-def moment_tag_known(moment_tag=None):
-    """
-    Test whether the programs know about a moment tag.
-    """
-    func, kwargs = _func_and_kwargs_for_moment(moment_tag)
-    if func is None:
-        return(False)
-    return(True)
 
 def moment_generator(
-        cubein, mask=None, noise=None,
-        moment=None, momkwargs=None,
-        outfile=None, errorfile=None,
-        channel_correlation=None,
-        context=None, assignkunits=False):
-
+    cubein: str | SpectralCube,
+    mask: str | SpectralCube | None = None,
+    noise: str | SpectralCube | None = None,
+    moment: str | None = None,
+    momkwargs: dict | None = None,
+    outfile: str | None = None,
+    errorfile: str | None = None,
+    channel_correlation: np.ndarray | None = None,
+):
     """
     Generate one moment map from input cube, noise, and masks.
+
+    Args:
+        cubein (str or SpectralCube): Input cube to generate moment from.
+        mask (str or SpectralCube, optional): Mask to apply to cube.
+            Defaults to None, which will use no mask.
+        noise (str or SpectralCube, optional): Noise cube to use for error estimation.
+            Defaults to None, which will use no noise cube.
+        moment (str, optional): Moment tag to generate.
+            Defaults to None, which will fail.
+        momkwargs (dict, optional): Additional keyword arguments for moment generation.
+            Defaults to None, which will just adopt the default kwargs.
+        outfile (str, optional): Output file name for moment map.
+            Defaults to None, which will not produce an output file.
+        errorfile (str, optional): Name for output error map.
+            Defaults to None, which will not produce an output file.
+        channel_correlation (np.ndarray, optional): Channel correlation coefficients.
+            Defaults to None, which will assume uncorrelated channels.
     """
 
-    # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
-    # Set up the call
-    # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
+    # Error checking
+    if moment is None:
+        raise ValueError("Moment tag must be specified.")
+
+    if not isinstance(moment, str):
+        raise TypeError("Moment tag should be a string.")
 
     # Get the relevant function and keyword arguments for this moment
     func, kwargs = _func_and_kwargs_for_moment(moment)
+
+    # If we don't recognise the moment tag, then return an error
     if func is None:
-        logging.error("Moment tag not recognized: "+str(moment))
-        raise NotImplementedError
-        return(None)
+        raise ValueError(f"Moment tag {moment} not recognized.")
+
+    # If we don't have a kwargs dictionary, then return an error
+    if not isinstance(kwargs, dict):
+        raise TypeError("kwargs should be a dictionary.")
 
     # Add any user-supplied kwargs to the dictionary
     if momkwargs is not None:
-        if type(momkwargs) != type({}):
-            logging.error("Type of momkwargs should be dictionary.")
-            raise NotImplementedError
-        for this_kwarg in momkwargs:
-            kwargs[this_kwarg] = momkwargs[this_kwarg]
-
-    # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
-    # Read in the data
-    # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
+        if isinstance(momkwargs, dict):
+            for this_kwarg in momkwargs:
+                kwargs[this_kwarg] = momkwargs[this_kwarg]
+        else:
+            raise TypeError("momkwargs should be a dictionary.")
 
     # Read in the cube (if needed)
-    if type(cubein) is str:
+    if isinstance(cubein, str):
         cube = SpectralCube.read(cubein)
-    elif type(cubein) is SpectralCube:
+    elif isinstance(cubein, SpectralCube):
         cube = cubein
     else:
-        logging.error('Unrecognized input type for cubein')
-        raise NotImplementedError
+        raise TypeError("cubein should be a string or SpectralCube object.")
 
     cube.allow_huge_operations = True
-        
-    # Force Kelvin. We will be unit agnostic later.
-    cube = cube.to(u.K)
-    
+
     # Attach a mask if needed
     if mask is not None:
-        if type(mask) is str:
+        if isinstance(mask, str):
             mask = SpectralCube.read(mask)
-        elif type(mask) is SpectralCube:
+        elif isinstance(mask, SpectralCube):
             mask = mask
         else:
-            logging.error('Unrecognized input type for mask')
-            raise NotImplementedError
+            raise TypeError("If specified, mask should be a string or SpectralCube object.")
+
+        mask.allow_huge_operations = True
 
         # Ensure the mask is booleans and attach it to the cube. This
-        # just assumes a match in astrometry. Could add reprojection
-        # here or (better) build a masking routine to apply masks with
-        # arbitrary astrometry.
-
-        mask = np.array(mask.filled_data[:].value, dtype=bool)
+        # just assumes a match in astrometry.
+        mask = np.array(mask.unitless_filled_data[:], dtype=bool)
         cube = cube.with_mask(mask, inherit_mask=False)
 
     # Read in the noise (if present)
-    if noise is not None:        
-        if type(noise) is str:
+    if noise is not None:
+        if isinstance(noise, str):
             noisecube = SpectralCube.read(noise)
-        elif type(noise) is SpectralCube:
+        elif isinstance(noise, SpectralCube):
             noisecube = noise
         else:
-            logging.error('Unrecognized input type for noise.')
-            raise NotImplementedError
+            raise TypeError("If specified, noise should be a string or SpectralCube object.")
 
         noisecube.allow_huge_operations = True
 
-    # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
-    # Call the moment generation
-    # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
-    # Probably not needed anymore
-    theseargs = (inspect.getfullargspec(func)).args
-
-    if 'context' in theseargs:
-        moment_map, error_map = func(
-            cube, rms=noisecube,
-            outfile=outfile, errorfile=errorfile,
-            channel_correlation=channel_correlation,
-            #context=context,
-            **kwargs)
     else:
-        moment_map, error_map = func(
-            cube, rms=noisecube,
-            outfile=outfile, errorfile=errorfile,
-            channel_correlation=channel_correlation,
-            **kwargs)
-        
-    return(moment_map, error_map)
-    
+        noisecube = None
 
+    # Call moment generation
+    moment_map, error_map = func(
+        cube,
+        rms=noisecube,
+        outfile=outfile,
+        errorfile=errorfile,
+        channel_correlation=channel_correlation,
+        **kwargs,
+    )
+
+    return moment_map, error_map

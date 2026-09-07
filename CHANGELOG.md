@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added .codecov.yml to configure codecov (#364).
 - Add more control over multiscale clean scales (#362).
 - Add tests for utilsLines, and tidy up formatting (#363).
+- Added spectral-cube equivalent routines for postprocessing (#371).
+- Add tests for scMoments, and tidy up formatting (#389).
+- Speed up sdintimaging by replacing feather with custom uvcombine tasks (#376).
+- Add tests for utilsResolutions, and tidy up formatting ().
 
 ### Changed
 
@@ -27,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated bespoke sdintimaging task, to align with latest CASA version (#347).
 - If we don't have any model flux, then overwrite minimum number of major cycles (#359).
 - Keep all 4 axes throughout postprocessing, to avoid slowdowns with re-adding degenerate axes (#353).
+- Speed up sdintimaging by removing unneeded repeated slow operations (#376).
 
 ### Fixed
 
@@ -45,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed crash if spectral/Stokes axis is swapped when making large mosaics (#366).
 - Keep tests running on test matrix even if one fails (#379).
 - Fixed typing on key import (#380).
+- Skip the feather-config mosaic pass when nothing was feathered (#383).
 
 ### Dependencies
 - Bump actions/upload-artifact from 6 to 7 (#313).
