@@ -167,9 +167,6 @@ if running the SingleDishPipeline.
 
 - ``bl_order``: Baseline order for line fitting. Can probably leave
   as 1.
-- ``chan_dv_kms``: Velocity resolution for the final cube. This should
-  be set to the resolution you plan to image your interferometric cubes
-  at.
 - ``do_plots``: Whether to produce diagnostic plots during the singledish
   processing.
 
