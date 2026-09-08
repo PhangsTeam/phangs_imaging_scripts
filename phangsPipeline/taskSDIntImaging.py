@@ -246,7 +246,7 @@ def setup_sdimaging(template='',
         i_csys = get_csys(output + '.residual')
         residual_conforms = check_wcs_conforms(temp_csys, i_csys)
 
-    regrid_residual = ~residual_exists | ~residual_conforms
+    regrid_residual = not (residual_exists and residual_conforms)
 
     image_exists = os.path.exists(output + '.image')
     image_conforms = False
@@ -254,7 +254,7 @@ def setup_sdimaging(template='',
         i_csys = get_csys(output + '.image')
         image_conforms = check_wcs_conforms(temp_csys, i_csys)
 
-    regrid_image = ~image_exists | ~image_conforms
+    regrid_image = not (image_exists and image_conforms)
 
     ## Regrid the input SD image to the target coordinate system, and apply pbmask
     if regrid_residual:
@@ -285,7 +285,7 @@ def setup_sdimaging(template='',
             temp_csys = get_csys(template + ".psf")
             i_csys = get_csys(output + ".psf")
             psf_conforms = check_wcs_conforms(temp_csys, i_csys)
-        regrid_psf = ~psf_exists | ~psf_conforms
+        regrid_psf = not (psf_exists and psf_conforms)
 
         if regrid_psf:
             ## Regrid the input PSF cube to the target coordinate system.
