@@ -121,3 +121,5 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools_scm]
 # Configure custom options here (version schemes, file writing, etc.)
 version_file = "phangsPipeline/version.py"
+tag.strict = true
+
