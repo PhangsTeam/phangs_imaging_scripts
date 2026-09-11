@@ -17,4 +17,8 @@ updates:
     target-branch: "master"
     schedule:
       interval: "weekly"
+    groups:
+      casa:
+        patterns:
+          - "casa*"
     open-pull-requests-limit: 10
