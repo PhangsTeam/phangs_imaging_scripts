@@ -77,6 +77,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
             do_shuffling: bool = False,
             do_flatmask: bool = False,
             do_flatmaps: bool = False,
+            convolve_method: str = "convolve_fft",
             make_directories: bool = True,
             overwrite: bool = True,
     ):
@@ -109,6 +110,9 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                 generate flat masks. Defaults to False.
             do_flatmaps (bool, optional): If True, will
                 generate flat maps. Defaults to False.
+            convolve_method (str, optional): Convolution method. Should be
+                    one of 'convolve', 'convolve_fft', 'convolve_uv'.
+                    Defaults to 'convolve_fft'.
             make_directories (bool, optional): If True, will
                 make the directories if they don't already exist.
                 Defaults to True.
@@ -153,8 +157,13 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                 # Always start with the native resolution
 
                 self.task_convolve(
-                    target=this_target, config=this_config, product=this_product,
-                    just_copy=True, overwrite=overwrite)
+                    target=this_target, 
+                    config=this_config, 
+                    product=this_product,
+                    convolve_method=convolve_method,
+                    just_copy=True, 
+                    overwrite=overwrite,
+                )
 
                 # Loop over all angular and physical resolutions.
 
@@ -166,9 +175,15 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                 for this_res_tag in res_list:
                     this_res_value = res_dict[this_res_tag]
                     self.task_convolve(
-                        target=this_target, config=this_config, product=this_product,
-                        res_tag=this_res_tag, res_value=this_res_value, res_type='ang',
-                        overwrite=overwrite)
+                        target=this_target,
+                        config=this_config,
+                        product=this_product,
+                        res_tag=this_res_tag,
+                        res_value=this_res_value,
+                        res_type="ang",
+                        convolve_method=convolve_method,
+                        overwrite=overwrite,
+                    )
 
                 res_dict = self._kh.get_phys_res_dict(
                     config=this_config, product=this_product)
@@ -178,9 +193,15 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                 for this_res_tag in res_list:
                     this_res_value = res_dict[this_res_tag]
                     self.task_convolve(
-                        target=this_target, config=this_config, product=this_product,
-                        res_tag=this_res_tag, res_value=this_res_value, res_type='phys',
-                        overwrite=overwrite)
+                        target=this_target,
+                        config=this_config,
+                        product=this_product,
+                        res_tag=this_res_tag,
+                        res_value=this_res_value,
+                        res_type="phys",
+                        convolve_method=convolve_method,
+                        overwrite=overwrite,
+                    )
 
         # Estimate the noise for each cube.
 
@@ -629,6 +650,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
             extra_ext_out='',
             overwrite=False,
             tol=0.1,
+            convolve_method="convolve_fft",
             nan_treatment='interpolate',
     ):
         """
@@ -725,10 +747,6 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
             else:
 
-                huge_cube = os.path.getsize(indir + input_file) >= 2880*2880*393
-                if huge_cube:
-                    logger.info(f"Setting huge_cube to {huge_cube} for channel-wise processing.")
-
                 if 'tol' in convolve_kwargs:
                     tol = convolve_kwargs['tol']
 
@@ -737,13 +755,18 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
                 if res_type == 'ang':
                     input_res_value = res_value * u.arcsec
-                    smooth_cube(incube=indir + input_file, outfile=outdir + outfile,
+                    smooth_cube(incube=indir + input_file, 
+                                outfile=outdir + outfile,
                                 angular_resolution=input_res_value,
-                                tol=tol, nan_treatment=nan_treatment,
-                                make_coverage_cube=True, coveragefile=outdir + coveragefile,
-                                collapse_coverage=True, coverage2dfile=outdir + coverage2dfile,
-                                overwrite=overwrite, 
-                                huge_cube=huge_cube)
+                                tol=tol,
+                                convolve_fn=convolve_method,
+                                nan_treatment=nan_treatment,
+                                make_coverage_cube=True, 
+                                coveragefile=outdir + coveragefile,
+                                collapse_coverage=True, 
+                                coverage2dfile=outdir + coverage2dfile,
+                                overwrite=overwrite,
+                                )
 
                 if res_type == 'phys':
                     this_distance = self._kh.get_distance_for_target(target)
@@ -752,13 +775,18 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                         return ()
                     this_distance = this_distance * 1e6 * u.pc
                     input_res_value = res_value * u.pc
-                    smooth_cube(incube=indir + input_file, outfile=outdir + outfile,
-                                linear_resolution=input_res_value, distance=this_distance,
-                                tol=tol, nan_treatment=nan_treatment,
-                                make_coverage_cube=True, coveragefile=outdir + coveragefile,
+                    smooth_cube(incube=indir + input_file, 
+                                outfile=outdir + outfile,
+                                linear_resolution=input_res_value, 
+                                distance=this_distance,
+                                tol=tol,
+                                convolve_fn=convolve_method,
+                                nan_treatment=nan_treatment,
+                                make_coverage_cube=True, 
+                                coveragefile=outdir + coveragefile,
                                 collapse_coverage=True,
-                                overwrite=overwrite, 
-                                huge_cube=huge_cube)
+                                overwrite=overwrite,
+                                )
 
         return ()
 
