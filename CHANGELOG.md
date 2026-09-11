@@ -32,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - If we don't have any model flux, then overwrite minimum number of major cycles (#359).
 - Keep all 4 axes throughout postprocessing, to avoid slowdowns with re-adding degenerate axes (#353).
 - Speed up sdintimaging by removing unneeded repeated slow operations (#376).
+- Replaced analysisUtils MRS calculation with bespoke version, that accounts properly for concatenated observations (#393).
+- Updated default values for setting automatic multiscales (#393).
 
 ### Fixed
 

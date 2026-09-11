@@ -10,6 +10,7 @@ import analysisUtils as au
 import numpy as np
 
 from .casaStuff import imhead
+from .casaVisRoutines import estimate_mrs
 
 logger = logging.getLogger(__name__)
 
@@ -176,8 +177,12 @@ class CleanCall:
 
             # Calculate LAS and beam size
             vis = self.get_param("vis")
-            las = au.estimateMRS(vis)
+            mrs_dict = estimate_mrs(vis)
+            las = mrs_dict["mrs"]
             beam = self.estimate_synthesised_beam(imaging_method=imaging_method)
+
+            logger.info("Calculated LAS as "+str(las)+" arcsec")
+            logger.info("Calculated beam as "+str(beam)+" arcsec")
 
             # Start with scales of 0 and the beam
             scales = [0, float(beam)]

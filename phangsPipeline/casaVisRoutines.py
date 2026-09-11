@@ -8,6 +8,8 @@ import os
 import shutil
 
 import analysisUtils as au
+import astropy.constants as const
+import astropy.units as u
 import numpy as np
 from packaging import version
 from scipy.ndimage import label
@@ -2334,3 +2336,259 @@ def noise_spectrum(
         spec[ii] = result[result.keys()[0]][stat_name]
 
     return spec
+
+def estimate_mrs(
+    vis: str,
+    baseline_percentile: float = 5,
+    mrs_factor: float = 0.983,
+    use_first_field: bool = True,
+    chunk_size: int = 100_000,
+) -> dict:
+    """Estimate the MRS for a given measurement set.
+
+    This function is specifically designed to sidestep the biases that can arise
+    from concatenating measurement sets. It calculates some minimum baseline percentile
+    from each unique observation ID, and then uses the minimum of these to calculate the MRS.
+    Because including 12m data to your 7m dataset shouldn't shrink the MRS, right?
+
+    This is set up to by default use the working equation in the ALMA handbook.
+
+    Args:
+        vis (str): Path to the measurement set.
+        baseline_percentile (float, optional): The percentile of the baseline distribution to use.
+            Defaults to 5.
+        mrs_factor (float, optional): Factor to multiply the MRS by. Defaults to
+            0.983.
+        use_first_field (bool, optional): If True, will just use the first field of each observation
+            ID for the calculation. Speeds things up and requires less loading of data into memory.
+            Defaults to True.
+        chunk_size (int, optional): Number of rows to process in each chunk, to limit memory usage.
+            Defaults to 100,000.
+
+    Returns:
+        dict: Dictionary containing the representative frequency, baseline for MRS,
+            the MRS in arcseconds, and the individual calculations for each observation ID.
+    """
+
+    rep_freq = get_representative_freq(vis)
+    logger.debug(f"Representative frequency: {rep_freq}")
+
+    # Get a list of the observation IDs
+    obs_ids = get_obs_ids(vis=vis)
+    logger.debug(f"Found {len(obs_ids)} observation IDs")
+
+    tb = casaStuff.tbtool()
+    tb.open(vis)
+
+    # Set up a dictionary to hold all the calculations
+    result = {
+        "representative_frequency": rep_freq.to(u.GHz).value,
+        "baseline_for_mrs_per_obs_id": {},
+        "mrs_per_obs_id": {},
+    }
+
+    for obs_id in obs_ids:
+
+        # Downselect on observation ID
+        subset_conditions = [
+            f"OBSERVATION_ID == {obs_id}",
+        ]
+        tb_subset = tb.query(" && ".join(subset_conditions))
+
+        # If we're only using first field, get the first field ID for further downselecting
+        if use_first_field:
+            field_id = tb_subset.getcell("FIELD_ID", 0)
+            subset_conditions.append(f"FIELD_ID == {field_id}")
+
+        tb_subset.close()
+
+        tb_subset = tb.query(" && ".join(subset_conditions))
+        total_rows = tb_subset.nrows()
+        
+        uv_distance_m = []
+
+        # Loop over in chunks to reduce memory cost
+        for startrow in range(0, total_rows, chunk_size):
+            nrow = min(chunk_size, total_rows - startrow)
+
+            uvw = np.asarray(
+                tb_subset.getcol("UVW",
+                                   startrow=startrow,
+                                   nrow=nrow,
+                                   rowincr=1,
+                                   )
+            )
+            antenna1 = np.asarray(
+                tb_subset.getcol(
+                    "ANTENNA1",
+                    startrow=startrow,
+                    nrow=nrow,
+                    rowincr=1,
+                )
+            )
+            antenna2 = np.asarray(
+                tb_subset.getcol(
+                    "ANTENNA2",
+                    startrow=startrow,
+                    nrow=nrow,
+                    rowincr=1,
+                )
+            )
+            ddid = np.asarray(
+                tb_subset.getcol(
+                    "DATA_DESC_ID",
+                    startrow=startrow,
+                    nrow=nrow,
+                    rowincr=1,
+                )
+            )
+            flag_row = np.asarray(
+                tb_subset.getcol(
+                    "FLAG_ROW",
+                    startrow=startrow,
+                    nrow=nrow,
+                    rowincr=1,
+                ),
+                dtype=bool,
+            )
+            flags = np.asarray(
+                tb_subset.getcol(
+                    "FLAG",
+                    startrow=startrow,
+                    nrow=nrow,
+                    rowincr=1,
+                ),
+                dtype=bool,
+            )
+
+            # CASA normally returns UVW as (3, nrow).
+            if uvw.shape[0] != 3 and uvw.shape[-1] == 3:
+                uvw = uvw.T
+
+            uvdm = np.hypot(uvw[0], uvw[1])
+
+            # FLAG normally has dimensions (ncorr, nchan, nrow).
+            # Keep a row if at least one correlation/channel is unflagged.
+            flag_axes = tuple(range(flags.ndim - 1))
+            completely_flagged = np.all(flags, axis=flag_axes)
+
+            valid = (
+                ~flag_row
+                & ~completely_flagged
+                & (antenna1 != antenna2)
+                & np.isfinite(uvdm)
+                & (uvdm > 0)
+                & (ddid >= 0)
+            )
+
+            # Only take valid values
+            uv_distance_m.extend(uvdm[valid])
+
+        uv_distance_m = np.asarray(uv_distance_m)
+
+        # Now we loop over, take the 5th percentile baseline
+        baseline_percentiles = []
+        bp = np.nanpercentile(uv_distance_m, baseline_percentile)
+        baseline_percentiles.append(bp)
+
+        # Take the minimum of these baseline percentiles to calculate MRS
+        baseline_for_mrs = np.nanmin(baseline_percentiles) * u.m
+
+        # Calculate the MRS in arcsec
+        mrs = (
+            mrs_factor
+            * const.c.to(u.m * u.Hz)
+            / (rep_freq.to(u.Hz) * baseline_for_mrs.to(u.m))
+            * u.rad
+        )
+        mrs = mrs.to(u.arcsec).value
+
+        result["baseline_for_mrs_per_obs_id"][obs_id] = baseline_for_mrs.to(u.m).value
+        result["mrs_per_obs_id"][obs_id] = mrs
+
+        logger.debug(f"Calculated MRS of {mrs} for obs ID {obs_id}")
+
+    tb.close()
+
+    # Finally, get the minimum baseline/maximum MRS from this to return
+    result["baseline_for_mrs"] = np.nanmin([r[-1] for r in result["baseline_for_mrs_per_obs_id"].items()])
+    result["mrs"] = np.nanmax([r[-1] for r in result["mrs_per_obs_id"].items()])
+
+    return result
+
+def get_representative_freq(
+        vis: str,
+) -> u.Quantity:
+    """Get the representative frequency for a measurement set
+
+    Will either pull this out from ASDM_SBSUMMARY (quick) if that
+    table exists, or fall back to calculating from the channel frequencies
+    in SPECTRAL_WINDOW.
+
+    Args:
+        vis (str): Path to measurement set
+
+    Returns:
+        u.Quantity: The representative frequency
+    """
+
+    tb = casaStuff.tbtool()
+
+    # If we have a representative frequency in the table, just use that
+    if os.path.exists(vis + "/ASDM_SBSUMMARY"):
+        
+        logger.debug("Using ASDM_SBSUMMARY to calculate representative frequency")
+        
+        tb.open(vis + "/ASDM_SBSUMMARY")
+
+        colnames = tb.colnames()
+
+        # The representative frequency can have different names, so loop
+        # over the possibilities until we find it
+        for frequency_row_name in ["frequency", "representativeFrequency"]:
+            if frequency_row_name in colnames:
+
+                frequencies = np.asarray(
+                    tb.getcol("frequency"),
+                    dtype=float,
+                )
+                rep_freq = frequencies[0]
+
+                # Convert to units of GHz
+                rep_freq = rep_freq * u.GHz
+
+                break
+        else:
+            raise KeyError("Could not find representative frequency within table")
+
+    # Otherwise, obtain representative frequency from the average of the frequencies.
+    else:
+        logger.debug("Using SPECTRAL_WINDOW to calculate representative frequency")
+        
+        tb.open(vis + "/SPECTRAL_WINDOW")
+        frequencies = np.asarray(tb.getcell("CHAN_FREQ"), dtype=float)
+        frequencies = frequencies[np.isfinite(frequencies) & (frequencies > 0)]
+        rep_freq = np.median(frequencies) * u.Hz
+    tb.close()
+
+    return rep_freq
+
+
+def get_obs_ids(vis):
+    """Get a list of the observation IDs from a MS
+
+    Args:
+        vis (str): Path to measurement set.
+
+    Returns:
+        list: List of the observation ID numbers
+    """
+
+    tb = casaStuff.tbtool()
+    tb.open(vis + "/OBSERVATION")
+    nrows = tb.nrows()
+    tb.close()
+
+    obs_ids = list(range(nrows))
+
+    return obs_ids
