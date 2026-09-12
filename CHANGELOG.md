@@ -52,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed typing on key import (#380).
 - Skip the feather-config mosaic pass when nothing was feathered (#383).
 - Fixed a wrong key name in the singledish pipeline (#384).
+- Fix crashes in suggest_extraction_scheme for cont extraction (#352).
 
 ### Dependencies
 - Bump actions/upload-artifact from 6 to 7 (#313).
