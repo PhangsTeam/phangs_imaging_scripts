@@ -8,6 +8,8 @@ import os
 import shutil
 
 import analysisUtils as au
+import astropy.constants as const
+import astropy.units as u
 import numpy as np
 from packaging import version
 from scipy.ndimage import label
@@ -2334,3 +2336,107 @@ def noise_spectrum(
         spec[ii] = result[result.keys()[0]][stat_name]
 
     return spec
+
+def estimate_mrs(
+    vis: str,
+    baseline_percentile: float = 5,
+    mrs_factor: float = 0.983,
+) -> dict:
+    """Estimate the MRS for a given measurement set.
+
+    This function is specifically designed to sidestep the biases that can arise
+    from concatenating measurement sets. It calculates some minimum baseline percentile
+    from each unique observation ID, and then uses the minimum of these to calculate the MRS.
+    Because including 12m data to your 7m dataset shouldn't shrink the MRS, right?
+
+    This is set up to by default use the working equation in the ALMA handbook.
+
+    Args:
+        vis (str): Path to the measurement set.
+        baseline_percentile (float, optional): The percentile of the baseline distribution to use.
+            Defaults to 5.
+        mrs_factor (float, optional): Factor to multiply the MRS by. Defaults to
+            0.983.
+
+    Returns:
+        dict: Dictionary containing the representative frequency, baseline for MRS,
+            and the MRS in arcseconds.
+    """
+
+    tb = casaStuff.tbtool()
+
+    # Obtain representative frequency from the average of the frequencies.
+    tb.open(vis + "/SPECTRAL_WINDOW")
+    frequencies = np.asarray(tb.getcell("CHAN_FREQ"), dtype=float)
+    frequencies = frequencies[np.isfinite(frequencies) & (frequencies > 0)]
+    rep_freq = np.median(frequencies) * u.Hz
+    tb.close()
+
+    tb.open(vis)
+
+    # Pull out information and decide valid antenna pairs.
+    uvw = np.asarray(tb.getcol("UVW"))
+    antenna1 = np.asarray(tb.getcol("ANTENNA1"))
+    antenna2 = np.asarray(tb.getcol("ANTENNA2"))
+    obs_ids = np.asarray(tb.getcol("OBSERVATION_ID"))
+    ddid = np.asarray(tb.getcol("DATA_DESC_ID"))
+    flag_row = np.asarray(
+        tb.getcol("FLAG_ROW"),
+        dtype=bool,
+    )
+    flags = np.asarray(
+        tb.getcol("FLAG"),
+        dtype=bool,
+    )
+
+    # CASA normally returns UVW as (3, nrow).
+    if uvw.shape[0] != 3 and uvw.shape[-1] == 3:
+        uvw = uvw.T
+
+    uv_distance_m = np.hypot(uvw[0], uvw[1])
+
+    # FLAG normally has dimensions (ncorr, nchan, nrow).
+    # Keep a row if at least one correlation/channel is unflagged.
+    flag_axes = tuple(range(flags.ndim - 1))
+    completely_flagged = np.all(flags, axis=flag_axes)
+
+    valid = (
+        ~flag_row &
+        ~completely_flagged &
+        (antenna1 != antenna2) &
+        np.isfinite(uv_distance_m) &
+        (uv_distance_m > 0) &
+        (ddid >= 0)
+    )
+    tb.close()
+
+    # Only take valid values
+    obs_ids = obs_ids[valid]
+    uv_distance_m = uv_distance_m[valid]
+
+    # Now we loop over, take the 5th percentile baseline
+    baseline_percentiles = []
+    for obs_id in np.unique(obs_ids):
+        idx = obs_ids == obs_id
+        bp = np.nanpercentile(uv_distance_m[idx], baseline_percentile)
+        baseline_percentiles.append(bp)
+
+    # Take the minimum of these baseline percentiles to calculate MRS
+    baseline_for_mrs = np.nanmin(baseline_percentiles) * u.m
+
+    # Calculate the MRS in arcsec
+    mrs = (
+        mrs_factor
+        * const.c.to(u.m * u.Hz)
+        / (rep_freq.to(u.Hz) * baseline_for_mrs.to(u.m))
+        * u.rad
+    )
+    mrs = mrs.to(u.arcsec).value
+
+    result = {
+        "representative_frequency": rep_freq.to(u.GHz).value,
+        "baseline_for_mrs": baseline_for_mrs.to(u.m).value,
+        "mrs": mrs,
+    }
+
+    return result
