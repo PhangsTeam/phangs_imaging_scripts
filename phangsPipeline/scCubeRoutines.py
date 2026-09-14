@@ -21,6 +21,11 @@ from . import __version__
 logger = logging.getLogger(__name__)
 
 
+CONVOLVE_FNS = {
+    "convolve": convolve,
+    "convolve_fft": convolve_fft,
+}
+
 def create_large_fits(
     f: str,
     header: fits.header.Header,
@@ -441,15 +446,14 @@ def convolve_to_round_beam(
     cube.allow_huge_operations = True
 
     # Get beam from cube (convert to arcsec), and then target major axis.
-    # This is a little different depending on whether the cube is a VaryingResolutionSpectralCube
-    # or not
+    # This is a little different depending on whether the cube is a
+    # VaryingResolutionSpectralCube or not
     if isinstance(cube, VaryingResolutionSpectralCube):
-        beam = cube.beams.common_beam()
+        beam = cube.beams.major.max()
     else:
-        beam = cube.beam
+        beam = cube.beam.major
 
-    bmaj = beam.major
-    bmaj = bmaj.to(u.arcsec)
+    bmaj = beam.to(u.arcsec)
 
     # Get pixel scale in arcsec. Assume square pixels
     pixel_scales = proj_plane_pixel_scales(cube.wcs.celestial) * u.deg
@@ -477,11 +481,11 @@ def convolve_to_round_beam(
     # epsilon if the target_beam cannot be deconvolved. This is by definition
     # not an issue for convolution methods where we pad out the kernel
     if convolve_fn in ["convolve_uv"]:
-        epsilon = 5e-4
+        epsilon = 0.1 * pixel_as
         try:
             target_beam.deconvolve(beam)
         except BeamError:
-            bmaj += epsilon * u.arcsec
+            bmaj += epsilon
         target_beam = Beam(major=bmaj, minor=bmaj, pa=0 * u.deg)
 
     logger.info(f"Convolving to round beam - {str(target_beam)}")
@@ -565,21 +569,16 @@ def convolve_cube(
                         target_beam=target_beam,
                         **kwargs,
                     )
-                elif convolve_fn == "convolve":
+                elif convolve_fn in ["convolve", "convolve_fft"]:
                     cube = cube.convolve_to(
                         target_beam,
-                        convolve=convolve,
-                        **kwargs,
-                    )
-                elif convolve_fn == "convolve_fft":
-                    cube = cube.convolve_to(
-                        target_beam,
-                        convolve=convolve_fft,
+                        convolve=CONVOLVE_FNS[convolve_fn],
                         **kwargs,
                     )
                 else:
                     raise ValueError(f"Unknown convolution function {convolve_fn}")
 
+                # The "cube" is 2D here. This should not require a large memory to read in.
                 cube_conv = cube.unitless_filled_data[:]
 
                 # Put this into the data and write out
@@ -609,16 +608,10 @@ def convolve_cube(
                             target_beam=target_beam,
                             **kwargs,
                         )
-                    elif convolve_fn == "convolve":
+                    elif convolve_fn in ["convolve", "convolve_fft"]:
                         chan_slice = chan_slice.convolve_to(
                             target_beam,
-                            convolve=convolve,
-                            **kwargs,
-                        )
-                    elif convolve_fn == "convolve_fft":
-                        chan_slice = chan_slice.convolve_to(
-                            target_beam,
-                            convolve=convolve_fft,
+                            convolve=CONVOLVE_FNS[convolve_fn],
                             **kwargs,
                         )
                     else:

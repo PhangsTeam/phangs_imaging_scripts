@@ -181,10 +181,10 @@ def common_res_for_mosaic(
             beam_list.append(cube.beam)
             pix_list.append(pixel_as.to(u.arcsec).value)
 
-        # Calculate a common beam
+        # Calculate a common largest beam
         beam_list = Beams(beams=beam_list)
-        common_beam = beam_list.common_beam()
-        bmaj = common_beam.major.to(u.arcsec).value
+        common_beam = beam_list.major.max()
+        bmaj = common_beam.to(u.arcsec).value
 
         max_pix = np.max(pix_list)
 
