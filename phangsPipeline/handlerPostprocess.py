@@ -250,6 +250,14 @@ if casa_enabled:
                 casaext='.image')
             fname_dict[tag] = aligned_file
 
+            tag = 'pb_aligned'
+            aligned_file = utilsFilenames.get_cube_filename(
+                target=target, config=config, product=product,
+                ext='pb_aligned' + extra_ext,
+                casa=True,
+                casaext='.image')
+            fname_dict[tag] = aligned_file
+
             # Imported single dish file aligned to the interfometer data
 
             tag = 'prepped_sd'
@@ -712,11 +720,12 @@ if casa_enabled:
             config=None,
             imaging_method="tclean",
             postprocessing_method: str = "casa",
-            image_tag="pbcorr_round",
-            in_tag="pb",
+            image_tag="linmos_aligned",
+            in_tag="pb_aligned",
             input_type="pb",
             scale_by_noise=True,
-            out_tag="weight",
+            already_pbcorr: bool = False,
+            out_tag="weight_aligned",
             extra_ext_in="",
             extra_ext_out="",
             check_files=True,
@@ -726,6 +735,10 @@ if casa_enabled:
             image for use in linearly mosaicking the cube with other,
             overlapping cubes. This task targets interferometric dish
             data.
+
+            Args:
+                already_pbcorr (bool): Should be set to True if data has
+                    already been primary beam corrected. Defaults to False.
             """
 
             if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
@@ -734,7 +747,6 @@ if casa_enabled:
             # Generate file names
 
             indir = self._kh.get_postprocess_dir_for_target(target)
-            outdir = self._kh.get_postprocess_dir_for_target(target)
             fname_dict_in = self._fname_dict(
                 target=target, config=config, product=product, extra_ext=extra_ext_in, imaging_method=imaging_method)
             fname_dict_out = self._fname_dict(
@@ -792,6 +804,7 @@ if casa_enabled:
                         input_type=input_type,
                         outfile=f"{indir}{outfile}.fits",
                         scale_by_noise=scale_by_noise,
+                        already_pbcorr=already_pbcorr,
                         overwrite=True,
                     )
                 else:
@@ -805,8 +818,8 @@ if casa_enabled:
                 product=None,
                 config=None,
                 postprocessing_method="casa",
-                image_tag='prepped_sd',
-                out_tag='sd_weight',
+                image_tag="sd_aligned",
+                out_tag="sd_weight_aligned",
                 extra_ext_in='',
                 extra_ext_out='',
                 check_files=True,
@@ -823,7 +836,6 @@ if casa_enabled:
             # Generate file names
 
             indir = self._kh.get_postprocess_dir_for_target(target)
-            outdir = self._kh.get_postprocess_dir_for_target(target)
             fname_dict_in = self._fname_dict(
                 target=target, config=config, product=product, extra_ext=extra_ext_in)
             fname_dict_out = self._fname_dict(
@@ -1609,8 +1621,8 @@ if casa_enabled:
                 product=None,
                 config=None,
                 postprocessing_method="casa",
-                in_tags=['linmos_commonres', 'weight', 'prepped_sd', 'sd_weight'],
-                out_tags=['linmos_aligned', 'weight_aligned', 'sd_aligned', 'sd_weight_aligned'],
+                in_tags=None,
+                out_tags=None,
                 extra_ext_in='',
                 extra_ext_out='',
                 check_files=True,
@@ -1620,7 +1632,23 @@ if casa_enabled:
             mosaic, align all parts of the mosaic to a common astrometric
             grid for combination into a single image.
             """
-            
+
+            if in_tags is None:
+                in_tags = [
+                    "linmos_commonres", 
+                    "pb", 
+                    "prepped_sd", 
+                    "sd_weight",
+                ]
+
+            if out_tags is None:
+                out_tags = [
+                    "linmos_aligned", 
+                    "pb_aligned", 
+                    "sd_aligned", 
+                    "sd_weight_aligned",
+                ]
+                
             if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
                 raise ValueError(f"postprocessing_method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
@@ -1735,6 +1763,86 @@ if casa_enabled:
                     )
                 else:
                     raise ValueError(f"postprocessing_method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
+
+            return ()
+
+        def task_make_weights_for_mosaic(
+            self,
+            target: str | None = None,
+            product: str | None = None,
+            config: str | None = None,
+            imaging_method: str = "tclean",
+            postprocessing_method: str="casa",
+            check_files:bool=True,
+        ):
+            """Loop over tiles in a mosaic and generate weights for linear mosaicking
+
+            Args:
+                target (str): Mosaic target
+                product (str): Product
+                config (str): Config
+                imaging_method (str): Imaging method. Should be one of
+                    'tclean', 'sdintimaging'. Defaults to 'tclean'.
+                postprocessing_method (str): Postprocessing method. Should be
+                    one of 'casa', 'spectralcube'. Defaults to 'casa'.
+                check_files (bool): Check files existence. Defaults to True.
+            """
+            
+            if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
+                raise ValueError(f"postprocessing_method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
+
+            # Get mosaic parts
+            mosaic_parts = self._kh.get_parts_for_linmos(target)
+
+            for mosaic_part in mosaic_parts:
+                self.task_make_interf_weight(
+                        target=mosaic_part,
+                        config=config,
+                        product=product,
+                        check_files=check_files,
+                        scale_by_noise=True,
+                        already_pbcorr=True,
+                        imaging_method=imaging_method,
+                        postprocessing_method=postprocessing_method,
+                    )
+            
+            return ()
+
+        def task_make_singledish_weights_for_mosaic(
+            self,
+            target: str | None = None,
+            product: str | None = None,
+            config: str | None = None,
+            postprocessing_method: str = "casa",
+            check_files: bool = True,
+        ):
+            """Loop over tiles in a mosaic and generate weights for linear mosaicking
+
+            Args:
+                target (str): Mosaic target
+                product (str): Product
+                config (str): Config
+                postprocessing_method (str): Postprocessing method. Should be
+                    one of 'casa', 'spectralcube'. Defaults to 'casa'.
+                check_files (bool): Check files existence. Defaults to True.
+            """
+
+            if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
+                raise ValueError(
+                    f"postprocessing_method should be one of {ALLOWED_POSTPROCESSING_METHODS}"
+                )
+
+            # Get mosaic parts
+            mosaic_parts = self._kh.get_parts_for_linmos(target)
+
+            for mosaic_part in mosaic_parts:
+                self.task_make_singledish_weight(
+                        target=mosaic_part,
+                        config=config,
+                        product=product,
+                        check_files=check_files,
+                        postprocessing_method=postprocessing_method,
+                    )
 
             return ()
 
@@ -1935,26 +2043,6 @@ if casa_enabled:
                     postprocessing_method=postprocessing_method,
                 )
 
-            if is_part_of_mosaic:
-                self.task_make_interf_weight(
-                    target=target,
-                    config=config,
-                    product=product,
-                    check_files=check_files,
-                    scale_by_noise=True,
-                    imaging_method=imaging_method,
-                    postprocessing_method=postprocessing_method,
-                )
-
-            if is_part_of_mosaic and has_singledish and imaging_method not in ['sdintimaging']:
-                self.task_make_singledish_weight(
-                    target=target,
-                    config=config,
-                    product=product,
-                    check_files=check_files,
-                    postprocessing_method=postprocessing_method,
-                )
-
             return ()
 
         def recipe_mosaic_one_target(
@@ -2032,14 +2120,27 @@ if casa_enabled:
                 check_files=check_files,
             )
 
-            in_tag_list = ['linmos_commonres', 'weight']
-            out_tag_list = ['linmos_aligned', 'weight_aligned']
+            in_tag_list = [
+                "linmos_commonres",
+                "pb",
+            ]
+            out_tag_list = [
+                "linmos_aligned",
+                "pb_aligned",
+            ]
 
             if parts_have_singledish:
-                in_tag_list.append('prepped_sd')
-                in_tag_list.append('sd_weight')
-                out_tag_list.append('sd_aligned')
-                out_tag_list.append('sd_weight_aligned')
+                additional_in_tags = [
+                    "prepped_sd",
+                    "sd_weight",
+                ]
+                additional_out_tags = [
+                    "sd_aligned",
+                    "sd_weight_aligned",
+                ]
+
+                in_tag_list.extend(additional_in_tags)
+                out_tag_list.extend(additional_out_tags)
 
             self.task_align_for_mosaic(
                 target=target,
@@ -2052,6 +2153,24 @@ if casa_enabled:
                 extra_ext_out=extra_ext_in,
                 check_files=check_files,
             )
+
+            # Create weights based on the convolved, regridded images
+            self.task_make_weights_for_mosaic(
+                target=target,
+                product=product,
+                config=config,
+                imaging_method=imaging_method,
+                postprocessing_method=postprocessing_method,
+                check_files=check_files,
+            )
+            if parts_have_singledish:
+                self.task_make_singledish_weights_for_mosaic(
+                    target=target,
+                    product=product,
+                    config=config,
+                    postprocessing_method=postprocessing_method,
+                    check_files=check_files,
+                )
 
             self.task_linear_mosaic(
                 target=target,

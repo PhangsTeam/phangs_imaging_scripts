@@ -448,6 +448,7 @@ def common_grid_for_mosaic(
 
 def noise_for_cube(
     infile: str | None = None,
+    pbfile: str | None = None,
     maskfile: str | None = None,
     exclude_mask: bool = True,
 ):
@@ -458,6 +459,9 @@ def noise_for_cube(
 
     Args:
         infile (str | None): the input image file.
+        pbfile (str | None): the PB file to use.
+            Defaults to None, which will not undo
+            any primary beam correction.
         maskfile (str | None): the mask image file.
         exclude_mask (default True): if True, mask is excluded.
             Defaults to True.
@@ -474,6 +478,11 @@ def noise_for_cube(
         logger.error(f"infile specified but not found - {infile}")
         return None
 
+    if pbfile is not None:
+        if not os.path.exists(pbfile):
+            logger.error(f"pbfile specified but not found - {pbfile}")
+            return None
+
     if maskfile is not None:
         if not os.path.exists(maskfile):
             logger.error(f"maskfile specified but not found - {maskfile}")
@@ -482,6 +491,11 @@ def noise_for_cube(
     # Read in cubes
     cube = SpectralCube.read(infile)
     cube.allow_huge_operations = True
+
+    if pbfile is not None:
+        pbcube = SpectralCube.read(pbfile)
+        pbcube.allow_huge_operations = True
+        cube *= pbcube.unitless_filled_data[:]
 
     if maskfile is not None:
         mask = SpectralCube.read(maskfile)
@@ -514,6 +528,7 @@ def generate_weight_file(
     scale_by_noise: bool = False,
     mask_for_noise: str | None = None,
     noise_value: float | None = None,
+    already_pbcorr: bool = False,
     scale_by_factor: float | None = None,
     overwrite: bool = False,
 ):
@@ -540,6 +555,9 @@ def generate_weight_file(
         noise_value (float | None): the noise value in the image.
             If not supplied, the program will calculate it from the image.
         scale_by_factor (float | None): the factor to scale by
+        already_pbcorr (bool): whether the image has already been primary beam
+            corrected. If True, will undo the primary beam correction before calculating
+            the weight. Defaults to False.
         overwrite (bool): whether to overwrite existing files
 
     Returns:
@@ -598,8 +616,15 @@ def generate_weight_file(
         if noise_value is None:
             logger.info(f"Calculating noise for {image_file}")
 
+            # If we're undoing the primary beam correction, pass that along
+            # here
+            pbfile = None
+            if input_type == "pb" and already_pbcorr:
+                pbfile = input_file
+
             noise_value = noise_for_cube(
                 infile=image_file,
+                pbfile=pbfile,
                 maskfile=mask_for_noise,
                 exclude_mask=True,
             )
