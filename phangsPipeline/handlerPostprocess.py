@@ -180,6 +180,16 @@ if casa_enabled:
             else:
                 fname_dict[tag] = ''
 
+            tag = "orig_weight_sd"
+            if has_sd:
+                orig_weight_sd_file = self._kh.get_sd_filename(
+                    target=target,
+                    product=product,
+                )
+                fname_dict[tag] = orig_weight_sd_file.replace(".fits", "_weight.fits")
+            else:
+                fname_dict[tag] = ""
+
             # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
             # Processed files (apply the extra_ext tag here)
             # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
@@ -657,59 +667,74 @@ if casa_enabled:
                 target=target, config=config, product=product, extra_ext=extra_ext_out)
 
             template = fname_dict_in[template_tag]
-            infile = fname_dict_in['orig_sd']
-            outfile = fname_dict_out[out_tag]
-
-            # Check input file existence
-
             if check_files:
-
-                files_exist = check_files_exist(indir+infile)
-                if not files_exist:
-                    return ()
-                
                 files_exist = check_files_exist(tempdir+template,
                                                 postprocessing_method=postprocessing_method,
                                                 )
                 if not files_exist:
                     return ()
 
-            # Stage the singledish data for feathering
+            for this_tag in [
+                "orig_sd",
+                "orig_weight_sd",
+            ]:
 
-            logger.info("")
-            logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
-            logger.info("Preparing single dish data for:")
-            logger.info(str(target) + " , " + str(product) + " , " + str(config))
-            logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
-            logger.info("")
+                out_tag = {
+                    "orig_sd": "prepped_sd",
+                    "orig_weight_sd": "sd_weight",
+                }[this_tag]
 
-            logger.info("Using prep_sd_for_feather.")
-            logger.info("Prepping " + outfile)
-            logger.info("Original file " + infile)
-            logger.info("Using interferometric template " + template)
+                infile = fname_dict_in[this_tag]
+                outfile = fname_dict_out[out_tag]
 
-            if not self._dry_run:
-                
-                if postprocessing_method == "casa":
-                    cfr.prep_sd_for_feather(
-                        sdfile_in=indir + infile,
-                        sdfile_out=outdir + outfile,
-                        interf_file=tempdir + template,
-                        do_import=True,
-                        do_align=True,
-                        do_checkunits=True,
-                        overwrite=True)
-                elif postprocessing_method == "spectralcube":
-                    sfr.prep_sd_for_feather(
-                        sdfile_in=f"{indir}{infile}",
-                        sdfile_out=f"{outdir}{outfile}.fits",
-                        interf_file=f"{tempdir}{template}.fits",
-                        do_align=True,
-                        do_checkunits=True,
-                        overwrite=True,
-                    )
-                else:
-                    raise ValueError(f"postprocessing_method must be one of {ALLOWED_POSTPROCESSING_METHODS}")
+                # Don't check units on the weight file
+                do_checkunits = True
+                if this_tag in ["orig_weight_sd"]:
+                    do_checkunits = False
+
+                # Check input file existence
+                if check_files:
+
+                    files_exist = check_files_exist(indir+infile)
+                    if not files_exist:
+                        return ()
+
+                # Stage the singledish data for feathering
+
+                logger.info("")
+                logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
+                logger.info("Preparing single dish data for:")
+                logger.info(str(target) + " , " + str(product) + " , " + str(config))
+                logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
+                logger.info("")
+
+                logger.info("Using prep_sd_for_feather.")
+                logger.info("Prepping " + outfile)
+                logger.info("Original file " + infile)
+                logger.info("Using interferometric template " + template)
+
+                if not self._dry_run:
+
+                    if postprocessing_method == "casa":
+                        cfr.prep_sd_for_feather(
+                            sdfile_in=indir + infile,
+                            sdfile_out=outdir + outfile,
+                            interf_file=tempdir + template,
+                            do_import=True,
+                            do_align=True,
+                            do_checkunits=do_checkunits,
+                            overwrite=True)
+                    elif postprocessing_method == "spectralcube":
+                        sfr.prep_sd_for_feather(
+                            sdfile_in=f"{indir}{infile}",
+                            sdfile_out=f"{outdir}{outfile}.fits",
+                            interf_file=f"{tempdir}{template}.fits",
+                            do_align=True,
+                            do_checkunits=do_checkunits,
+                            overwrite=True,
+                        )
+                    else:
+                        raise ValueError(f"postprocessing_method must be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
             return ()
 
@@ -887,6 +912,13 @@ if casa_enabled:
                 target=target, config=config, product=product, extra_ext=extra_ext_in)
             fname_dict_out = self._fname_dict(
                 target=target, config=config, product=product, extra_ext=extra_ext_out)
+
+            # Check we haven't pulled in a singledish weight file already, and if we do, skip this step.
+            weight_file_exists = check_files_exist(indir+fname_dict_in["sd_weight"],
+                                                   postprocessing_method=postprocessing_method,
+                                                   )
+            if weight_file_exists:
+                return ()
 
             image_file = fname_dict_in[image_tag]
             outfile = fname_dict_out[out_tag]
