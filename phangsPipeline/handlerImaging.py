@@ -158,7 +158,7 @@ if casa_enabled:
         def loop_imaging(
             self,
             do_all=False,
-            imaging_method='tclean',
+            imaging_method="tclean",
             imaging_method_override=None,
             do_dirty_image=False,
             do_revert_to_dirty=False,
@@ -174,11 +174,12 @@ if casa_enabled:
             do_export_to_fits=False,
             convergence_fracflux=0.01,
             convergence_noise_z_threshold=None,
+            channel_noise_sigma_threshold=None,
             singlescale_threshold_value=1.0,
             extra_ext_in=None,
             suffix_in=None,
             extra_ext_out=None,
-            recipe='phangsalma',
+            recipe="phangsalma",
             make_directories=True,
             dynamic_sizing=True,
             force_square=False,
@@ -201,6 +202,10 @@ if casa_enabled:
                 Convergence is reached when the z-score test is less than this value. By default,
                 this is disabled by setting to None. We suggest setting this to 2.0 when enabled
                 as a conservative choice.
+
+            We also have an optional check to mask out channels where there is no
+            signal. To use this, set channel_noise_sigma_threshold to a value (2 or 3 is
+            appropriate, lower values are stricter).
 
             Parameters
             ----------
@@ -374,6 +379,7 @@ if casa_enabled:
                         do_export_to_fits=do_export_to_fits,
                         convergence_fracflux=convergence_fracflux,
                         convergence_noise_z_threshold=convergence_noise_z_threshold,
+                        channel_noise_sigma_threshold=channel_noise_sigma_threshold,
                         singlescale_threshold_value=singlescale_threshold_value,
                         dynamic_sizing=dynamic_sizing,
                         force_square=force_square,
@@ -916,6 +922,63 @@ if casa_enabled:
                 move_sd_psf(input_root=clean_call.get_param('imagename'))
 
             return ()
+        
+        @CleanCallFunctionDecorator
+        def task_mask_noise_channels(
+                self,
+                clean_call=None,
+                product=None,
+                imaging_method='tclean',
+                channel_noise_sigma_threshold: float = 3.0,
+        ):
+            """
+            Create a mask to remove noise-only channels
+
+            Args:
+                channel_noise_sigma_threshold (float, optional): Channel noise threshold.
+                    Defaults to 3.
+            """
+
+            if product is None:
+                logger.error("Require a product. Returning.")
+                raise Exception("Require a product. Returning.")
+                return ()
+
+            # Get fname dict
+            fname_dict = self._fname_dict(product=product, imagename=clean_call.get_param('imagename'),
+                                          imaging_method=imaging_method)
+
+            # get imagename
+
+            imagename = fname_dict['image']
+            if not os.path.isdir(imagename):
+                logger.error("Image not found: " + imagename)
+                return ()
+
+            # print message
+            logger.info("")
+            logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
+            logger.info("Creating noise channel mask for:")
+            logger.info(str(imagename))
+            logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
+            logger.info("")
+
+            if self._dry_run:
+                return()
+
+            # Noise channel mask
+            msr.mask_noise_channels(
+                imaging_method=imaging_method,
+                cube_root=fname_dict['root'],
+                sigma_threshold=channel_noise_sigma_threshold,
+                suffix_in="",
+                suffix_out="",
+                operation="AND",
+            )
+
+            clean_call.set_param('usemask', 'user')
+
+            return ()
 
         @CleanCallFunctionDecorator
         def task_singlescale_mask(
@@ -1122,35 +1185,36 @@ if casa_enabled:
         #############################
 
         def recipe_phangsalma_imaging(
-                self,
-                target=None,
-                product=None,
-                config=None,
-                extra_ext_in=None,
-                suffix_in=None,
-                extra_ext_out=None,
-                imaging_method='tclean',
-                imaging_method_override=None,
-                do_dirty_image=True,
-                do_revert_to_dirty=True,
-                do_read_clean_mask=True,
-                do_multiscale_clean=True,
-                do_revert_to_multiscale=True,
-                do_singlescale_mask=True,
-                singlescale_mask_high_snr=None,
-                singlescale_mask_low_snr=None,
-                singlescale_mask_absolute=False,
-                do_singlescale_clean=True,
-                do_revert_to_singlescale=True,
-                do_export_to_fits=True,
-                convergence_fracflux=0.01,
-                convergence_noise_z_threshold=None,
-                singlescale_threshold_value=1.0,
-                dynamic_sizing=True,
-                force_square=False,
-                export_dirty=False,
-                export_multiscale=False,
-                overwrite=False,
+            self,
+            target=None,
+            product=None,
+            config=None,
+            extra_ext_in=None,
+            suffix_in=None,
+            extra_ext_out=None,
+            imaging_method="tclean",
+            imaging_method_override=None,
+            do_dirty_image=True,
+            do_revert_to_dirty=True,
+            do_read_clean_mask=True,
+            do_multiscale_clean=True,
+            do_revert_to_multiscale=True,
+            do_singlescale_mask=True,
+            singlescale_mask_high_snr=None,
+            singlescale_mask_low_snr=None,
+            singlescale_mask_absolute=False,
+            do_singlescale_clean=True,
+            do_revert_to_singlescale=True,
+            do_export_to_fits=True,
+            convergence_fracflux=0.01,
+            convergence_noise_z_threshold=None,
+            channel_noise_sigma_threshold=None,
+            singlescale_threshold_value=1.0,
+            dynamic_sizing=True,
+            force_square=False,
+            export_dirty=False,
+            export_multiscale=False,
+            overwrite=False,
         ):
             """
             PHANGS-ALMA basic imaging recipe.
@@ -1325,6 +1389,15 @@ if casa_enabled:
             #    clean_call.set_param('usemask', 'pb')
             #    clean_call.set_param('pbmask', 0.2)
 
+            # Mask noise channels if we have a sigma threshold defined
+            if channel_noise_sigma_threshold is not None:
+                self.task_mask_noise_channels(
+                    clean_call=clean_call,
+                    product=product,
+                    imaging_method=imaging_method,
+                    channel_noise_sigma_threshold=channel_noise_sigma_threshold,
+                )
+
             # Dynamic sizing
 
             if dynamic_sizing:
@@ -1383,6 +1456,10 @@ if casa_enabled:
             if dynamic_sizing:
                 clean_call.set_param('cell', cell, nowarning=True)
                 clean_call.set_param('imsize', imsize, nowarning=True)
+
+            # Since we've reset the clean call, need to reassign the noise channel mask if we have one
+            if channel_noise_sigma_threshold is not None:
+                clean_call.set_param('usemask', 'user')
 
             # Make a signal-to-noise based mask for use in singlescale clean.
 

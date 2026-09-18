@@ -7,10 +7,15 @@ import logging
 import os
 
 import analysisUtils as au
+import astropy.units as u
 import numpy as np
 import scipy.ndimage as ndimage
 from astropy.io import fits
-from scipy.special import erfc
+from astropy.wcs.utils import proj_plane_pixel_scales
+from radio_beam import Beam
+from scipy.special import erfc, ndtri_exp
+from scipy.stats import kurtosis, skew
+from spectral_cube import Projection, SpectralCube
 
 from . import casaStuff
 from . import casaCubeRoutines as ccr
@@ -350,6 +355,413 @@ def write_mask(infile, outfile, mask, huge_cube_workaround=True):
         myia.close()
 
     return True
+
+
+def get_beam_fft(
+        beam: Beam,
+        pixscale: u.Quantity | None = None,
+        shape: tuple[int, int] | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Get the normalised FFT of a beam kernel
+
+    Args:
+        beam: Beam object
+        pixscale: u.Quantity: Pixel scale
+        shape: tuple[int, int]: Shape for the
+            output FFT
+
+    Returns:
+        np.ndarray: Beam kernel, FFT of the beam kernel
+    """
+
+    if pixscale is None:
+        raise ValueError("pixscale must be defined!")
+
+    if shape is None:
+        raise ValueError("shape must be defined!")
+
+    # Create a kernel from the beam to convolve with the random field
+    k = beam.as_kernel(pixscale=pixscale,
+                       x_size=shape[1],
+                       y_size=shape[0],
+                       ).array
+
+    # Normalise the kernel
+    k = k / np.sqrt(np.sum(k ** 2))
+
+    # Get the FFT of the kernel
+    k_fft = np.fft.rfft2(
+        k,
+    )
+
+    return k, k_fft
+
+
+def convolve_with_fft(
+        data: np.ndarray,
+        k_fft: np.ndarray,
+) -> np.ndarray:
+    """Convolve data with a kernel using FFT
+
+    Args:
+        data: np.ndarray: Input data to convolve
+        k_fft: np.ndarray: FFT of the kernel
+
+    Returns:
+        np.ndarray: Convolved data
+    """
+
+    # Take FFT of the data
+    data_fft = np.fft.rfft2(data)
+
+    # Multiply by the kernel FFT
+    convolved_fft = data_fft * k_fft
+
+    # Take inverse FFT to get convolved data
+    convolved_data = np.fft.ifftshift(np.fft.irfft2(convolved_fft, s=data.shape))
+
+    return convolved_data
+
+
+def calculate_departure(
+        data: np.ndarray,
+        n_eff: float | None = None,
+):
+    """Calculate departure score for a dataset
+
+    Args:
+        data (np.ndarray): Input data
+        n_eff (float | None): Effective number of independent measurements.
+            If None, will not correct for sample size.
+
+    Returns:
+        dict: Dictionary containing skew, kurtosis, observed departure, and corrected departure
+    """
+
+    g1 = skew(data, bias=False)
+    g2 = kurtosis(data, fisher=True, bias=False)
+
+    # Sample-size-independent departure score
+    observed_departure = np.sqrt(g1 ** 2 + g2 ** 2 / 4)
+
+    corrected_departure = None
+
+    # Approximations for Gaussian-beam correlation
+    if n_eff is not None:
+        n_eff_skew = 1.5 * n_eff
+        n_eff_kurt = 2.0 * n_eff
+
+        expected_d2 = (
+                6 / n_eff_skew
+                + 6 / n_eff_kurt
+        )
+
+        corrected_departure = np.sqrt(
+            max(0.0, observed_departure ** 2 - expected_d2)
+        )
+
+    result = {
+        "g1": g1,
+        "g2": g2,
+        "observed_departure": observed_departure,
+        # "expected_gaussian_rms": np.sqrt(expected_d2),
+        "corrected_departure": corrected_departure,
+    }
+
+    return result
+
+
+def beam_corrected_gaussianity(
+        chan: Projection,
+):
+    """Calculate beam-corrected statistics for a channel of a cube.
+
+    Args:
+        chan (Projection): Channel to calculate statistics for.
+
+    Returns:
+        dict: Dictionary containing skew, kurtosis, observed departure, corrected departure,
+            Jarque-Bera statistic, p-value, log p-value, log10 p-value, and sigma.
+    """
+
+    pix_per_beam = chan.pixels_per_beam
+
+    # Pull out the data, use the underlying data
+    # since it's faster
+    data = chan._data
+    data = data[np.isfinite(data)]
+
+    # If we have no valid data, return None
+    if data.size == 0:
+        return None
+
+    # Calculate n_beams as the number of independent beams in the image
+    n_beams = data.size / pix_per_beam
+
+    result = calculate_departure(data, n_eff=n_beams)
+
+    if result["corrected_departure"] is not None:
+        departure = result["corrected_departure"]
+    else:
+        departure = result["observed_departure"]
+
+    # Convert this to Jarque-Bera statistic
+    jb = n_beams * departure ** 2 / 6
+
+    # If we're below the noise floor, set
+    # to machine precision
+    if jb == 0:
+        jb = np.finfo(float).eps
+
+    log_p = -jb / 2
+    log10_p = log_p / np.log(10)
+    sigma = -ndtri_exp(log_p)
+
+    # May still underflow, but sigma and log_p remain valid
+    p_value = np.exp(log_p)
+
+    result.update(
+        {
+            "jarque_bera": jb,
+            "p_value": p_value,
+            "log_p_value": log_p,
+            "log10_p_value": log10_p,
+            "sigma": sigma,
+        }
+    )
+
+    return result
+
+
+def calculate_departure_null(
+        beam: Beam,
+        pixscale: u.Quantity,
+        pix_per_beam: float | None = None,
+        shape: tuple[int, int] = (100, 100),
+        n_draws: int = 1000,
+) -> np.ndarray:
+    """Calculate departure scores for a null test of Gaussianity, given a beam and pixel scale.
+
+    Args:
+        beam (Beam): Beam object to convolve with pure noise
+        pixscale (u.Quantity): Pixel scale of the image
+        pix_per_beam (float | None): Number of pixels per beam. If None,
+            will not correct for the effective number of independent measurements.
+        shape (tuple[int, int]): Shape of the random noise field to generate.
+            Defaults to (100, 100).
+        n_draws (int): Number of random noise fields to generate. Defaults to 1000.
+
+    Returns:
+        np.ndarray: Array of departure scores for each random noise field
+    """
+
+    _, k_fft = get_beam_fft(
+        beam,
+        pixscale=pixscale,
+        shape=shape,
+    )
+    departure_null = np.full(n_draws, np.nan)
+
+    rng = np.random.default_rng()
+
+    for n_draw in range(n_draws):
+
+        # Generate a random noise field, convolve and flatten
+        noise_field = rng.normal(size=shape)
+        noise_field = convolve_with_fft(
+            noise_field,
+            k_fft=k_fft,
+        )
+        noise_field = noise_field.flatten()
+
+        # Calculate the effective number of independent measurements
+        n_eff = None
+        if pix_per_beam is not None:
+            n_eff = noise_field.size / pix_per_beam
+
+        result = calculate_departure(noise_field,
+                                     n_eff=n_eff,
+                                     )
+
+        if result["corrected_departure"] is not None:
+            departure = result["corrected_departure"]
+        else:
+            departure = result["observed_departure"]
+
+        # Don't take the 0s, since they're meaningless
+        if departure == 0:
+            continue
+
+        departure_null[n_draw] = departure
+
+    return departure_null
+
+
+def get_noise_only_channels(
+        f: str,
+        sigma_threshold: float | None = 2,
+) -> list[bool]:
+    """Check where a cube only has noise channels
+
+    There are two checks that go on here: the first is that the sample-size-independent
+    departure score (calculated from skew and kurtosis of the data) is above a sigma-threshold
+    to a null test. The second is that the Jarque-Bera statistic is above a sigma-threshold.
+    There is a little complication here that statistics need to be corrected for the effective
+    number of independent measurements (number of beams).
+
+    Args:
+        f (str): Path to the cube
+        sigma_threshold (float | None): Threshold in sigma for departure from Gaussianity.
+            If None, will not check and just return False.
+
+    Returns:
+        bool: True if all channels are consistent with being Gaussian noise, False otherwise
+    """
+
+    cube = SpectralCube.read(f)
+    cube.allow_huge_operations = True
+
+    # If we're not checking, just return True
+    if sigma_threshold is None:
+        return [True] * cube.shape[0]
+
+    # Get pixel scale in arcsec. Assume square pixels
+    pixscales = proj_plane_pixel_scales(cube.wcs.celestial) * u.deg
+    pixscale = [p.to(u.arcsec) for p in pixscales][0]
+
+    # Take the first valid channel of the cube, assuming the beam stays relatively
+    # constant. This is a simplification, but should be fine for our purposes.
+
+    mask = cube.get_mask_array()
+    valid_mask = list(np.sum(mask, axis=(1, 2)) > 0)
+    first_valid_chan = valid_mask.index(True)
+
+    chan = cube[first_valid_chan]
+    beam = chan.beam
+    pix_per_beam = chan.pixels_per_beam
+
+    departure_null = calculate_departure_null(
+        beam=beam,
+        pixscale=pixscale,
+        pix_per_beam=pix_per_beam,
+    )
+
+    # Calculate a "typical" departure from the Gaussian field
+    mean_departure_null = np.nanmean(departure_null)
+    std_departure_null = np.nanstd(departure_null)
+
+    # Now calculate statistics for each channel in the cube
+    sigma = np.full(cube.shape[0], np.nan)
+    departure = np.full(cube.shape[0], np.nan)
+
+    for chan_idx in range(cube.shape[0]):
+
+        result = beam_corrected_gaussianity(cube[chan_idx])
+
+        if result is not None:
+            sigma[chan_idx] = result["sigma"]
+            if result["corrected_departure"] is not None:
+                d = result["corrected_departure"]
+            else:
+                d = result["observed_departure"]
+            departure[chan_idx] = d
+
+    # Calculate noise-only channels
+    noise_only_channels = np.logical_or(
+        sigma < sigma_threshold,
+        departure < sigma_threshold * std_departure_null + mean_departure_null,
+    )
+
+    # Convert to a strict list of booleans
+    noise_only_channels = [bool(x) for x in noise_only_channels]
+
+    return noise_only_channels
+
+def mask_noise_channels(
+        imaging_method='tclean',
+        cube_root=None,
+        suffix_in='',
+        suffix_out='',
+        operation='AND',
+        sigma_threshold=3,
+):
+    """Mask out channels that are consistent with being noise-only."""
+
+    if imaging_method == 'sdintimaging':
+        cube_root += '.joint.cube'
+
+    if not os.path.isdir(cube_root + '.image' + suffix_in):
+        logger.error('Data file not found: "' + cube_root + '.image' + suffix_in + '"')
+        logger.info('Need CUBE_ROOT.image to be an image file.')
+        logger.info('Returning. Generalize the code if you want different syntax.')
+        return
+
+    header = casaStuff.imhead(cube_root + '.image' + suffix_in)
+    if header['axisnames'][2] == 'Frequency':
+        spec_axis = 2
+    else:
+        spec_axis = 3
+
+    f = cube_root + '.image' + suffix_in
+
+    logger.info('Reading cube.')
+    cube = read_cube(f, huge_cube_workaround=True)
+
+    mask = np.ones(cube.shape, dtype=bool)
+
+    logger.info("Finding noise-only channels")
+    noise_only_channels = get_noise_only_channels(
+        f,
+        sigma_threshold=sigma_threshold,
+    )
+    total_noise_only = sum(noise_only_channels)
+    logger.info(f"{total_noise_only}/{len(noise_only_channels)} channels identified as noise-only.")
+
+    for chan_idx in range(cube.shape[spec_axis]):
+
+        if noise_only_channels[chan_idx]:
+
+            # Slice out the channel
+            slc = [slice(None)] * len(mask.shape)
+            slc[spec_axis] = slice(chan_idx, chan_idx + 1)
+            slc = tuple(slc)
+            mask[slc] = False
+
+    # Expect to be here with minimal memory footprint and mask
+    # created.
+
+    if operation == 'AND' or operation == 'OR':
+        if os.path.isdir(cube_root + '.mask' + suffix_out):
+            old_mask = read_cube(cube_root + '.mask' + suffix_out, huge_cube_workaround=True)
+        else:
+            logger.info("Operation AND/OR requested but no previous mask found.")
+            logger.info("... will set operation=NEW.")
+            operation = 'NEW'
+
+    logger.info('Joining with old mask.')
+    if operation == 'AND':
+        mask = mask * old_mask
+    if operation == 'OR':
+        mask = (mask + old_mask) > 0
+    if operation == 'NEW':
+        mask = mask
+    else:
+        del old_mask
+
+    logger.info('Recasting as an int.')
+    # this might be better: mask.astype(int, copy=False)
+    # mask = mask.astype(int)
+    mask = mask.astype(np.int32)
+
+    # Export the image to fits, put in the mask and convert back to a CASA image
+    logger.info("Writing mask to disk")
+
+    write_mask(
+        cube_root + ".image" + suffix_in,
+        cube_root + ".mask" + suffix_out,
+        mask,
+        huge_cube_workaround=True,
+    )
 
 
 def signal_mask(
