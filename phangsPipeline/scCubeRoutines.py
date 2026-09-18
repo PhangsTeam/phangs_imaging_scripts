@@ -77,6 +77,13 @@ def reproject_to_other_cube(
     else:
         logger.info("Performing spectral interpolation to match target cube")
 
+        if not input_cube.spectral_axis.unit.is_equivalent(target_cube.spectral_axis.unit):
+            # Try to convert to equivalent spectral units:
+            input_cube = input_cube.with_spectral_unit(
+                target_cube.spectral_axis.unit,
+                velocity_convention="radio",  # assume radio convention by default
+            )
+
         reproj_cube = input_cube.spectral_interpolate(target_cube.spectral_axis)
 
     # Next up is spatial reprojection, where we check the celestial WCS to see if we need
