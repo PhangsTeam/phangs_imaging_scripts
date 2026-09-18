@@ -310,6 +310,7 @@ if casa_enabled:
                 do_dirty_image=False,
                 do_revert_to_dirty=False,
                 do_read_clean_mask=False,
+                skip_multiscale_if_mask_empty=True,
                 do_multiscale_clean=False,
                 do_revert_to_multiscale=False,
                 do_singlescale_mask=False,
@@ -325,6 +326,7 @@ if casa_enabled:
                 convergence_fracflux=0.01,
                 convergence_noise_z_threshold=None,
                 singlescale_threshold_value=1.0,
+                channel_noise_sigma_threshold=None,
                 extra_ext_in=None,
                 suffix_in=None,
                 extra_ext_out=None,
@@ -355,6 +357,9 @@ if casa_enabled:
                 If True, revert to dirty image.
             do_read_clean_mask : bool
                 If True, read clean mask.
+            skip_multiscale_if_mask_empty : bool
+                If True, will not perform multiscale cleaning if 
+                clean mask is empty
             do_multiscale_clean : bool
                 If True, multiscale clean.
             do_revert_to_multiscale : bool
@@ -381,6 +386,9 @@ if casa_enabled:
                 greater than 2.0.
             singlescale_threshold_value : float
                 Threshold value for singlescale clean. Default is 1.0.
+            channel_noise_sigma_threshold : float
+                Threshold value for defining a channel as purely noise. Default is None,
+                which will not perform this check.
             extra_ext_in : str
                 Extra extension for input files.
             suffix_in : str
@@ -450,6 +458,7 @@ if casa_enabled:
                     do_dirty_image=do_dirty_image,
                     do_revert_to_dirty=do_revert_to_dirty,
                     do_read_clean_mask=do_read_clean_mask,
+                    skip_multiscale_if_mask_empty=skip_multiscale_if_mask_empty,
                     do_multiscale_clean=do_multiscale_clean,
                     do_revert_to_multiscale=do_revert_to_multiscale,
                     do_singlescale_mask=do_singlescale_mask,
@@ -463,6 +472,7 @@ if casa_enabled:
                     do_cleanup=do_cleanup,
                     convergence_fracflux=convergence_fracflux,
                     convergence_noise_z_threshold=convergence_noise_z_threshold,
+                    channel_noise_sigma_threshold=channel_noise_sigma_threshold,
                     singlescale_threshold_value=singlescale_threshold_value,
                     dynamic_sizing=dynamic_sizing,
                     force_square=force_square,
@@ -1142,13 +1152,15 @@ if casa_enabled:
 
         @CleanCallFunctionDecorator
         def task_multiscale_clean(
-                self,
-                chunk_num=None,
-                convergence_fracflux=0.01,
-                convergence_noise_z_threshold=None,
-                backup=True,
-                gather_chunks_into_cube=False,
-                remove_chunks=False,
+            self,
+            chunk_num=None,
+            convergence_fracflux=0.01,
+            convergence_noise_z_threshold=None,
+            channel_noise_sigma_threshold=None,
+            backup=True,
+            gather_chunks_into_cube=False,
+            remove_chunks=False,
+            skip_multiscale_if_mask_empty=True,
         ):
             """
             Run a multiscale clean loop to convergence. This task
@@ -1191,6 +1203,10 @@ if casa_enabled:
                     logger.warning("I expected a multiscale or mtmfs deconvolver but got " + str(
                         this_clean_call.get_param('deconvolver')) + ".")
                     raise Exception("Incorrect clean call! Should have a multiscale or mtmfs deconvolver.")
+                
+                # If we've masked noise channels, make sure we use the mask
+                if channel_noise_sigma_threshold is not None:
+                    this_clean_call.set_param("usemask", "user")
 
                 logger.info("")
                 logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
@@ -1199,34 +1215,50 @@ if casa_enabled:
                 logger.info("This is {0} out of {1} to be imaged".format(ii+1, len(chunks_iter)))
                 logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
                 logger.info("")
+                
+                skip_this_step = False
+                if skip_multiscale_if_mask_empty:
+                    if self.imaging_method == 'sdintimaging':
+                        mask_name = "{}.joint.cube.mask".format(self.chunk_params[this_chunk_num]['full_imagename'])
+                    else:
+                        mask_name = "{}.mask".format(self.chunk_params[this_chunk_num]['full_imagename'])
 
-                imr.clean_loop(clean_call=this_clean_call,
-                            imaging_method=self.imaging_method,
-                            record_file=this_clean_call.get_param('imagename') + '_multiscale_record.txt',
-                            niter_base_perchan=10,
-                            niter_growth_model='geometric',
-                            niter_growth_factor=2.0,
-                            niter_saturation_perchan=1000,
-                            niter_other_input=None,
-                            cycleniter_base=100,
-                            cycleniter_growth_model='linear',
-                            cycleniter_growth_factor=1.0,
-                            cycleniter_saturation_value=1000,
-                            cycleniter_other_input=None,
-                            threshold_type='snr',
-                            threshold_value=4.0,
-                            min_loops=3,
-                            max_loops=20,
-                            max_total_niter=None,
-                            convergence_fracflux=convergence_fracflux,
-                            convergence_totalflux=None,
-                            convergence_fluxperniter=None,
-                            use_absolute_delta=True,
-                            stop_at_negative=True,
-                            remask_each_loop=False,
-                            force_dirty_image=False,
-                            convergence_noise_z_threshold=convergence_noise_z_threshold,
-                            )
+                    if os.path.exists(mask_name):
+                        mask_stats = msr.stat_cube(cube_file=mask_name)
+                        if mask_stats['sum'] == 0:
+                            skip_this_step = True
+                            logger.info("")
+                            logger.info("The clean mask is empty and SKIP_MULTISCALE_IF_MASK_EMPTY is True. Skipping the multiscale clean step.")
+                            logger.info("")
+
+                if not skip_this_step:
+                    imr.clean_loop(clean_call=this_clean_call,
+                                imaging_method=self.imaging_method,
+                                record_file=this_clean_call.get_param('imagename') + '_multiscale_record.txt',
+                                niter_base_perchan=10,
+                                niter_growth_model='geometric',
+                                niter_growth_factor=2.0,
+                                niter_saturation_perchan=1000,
+                                niter_other_input=None,
+                                cycleniter_base=100,
+                                cycleniter_growth_model='linear',
+                                cycleniter_growth_factor=1.0,
+                                cycleniter_saturation_value=1000,
+                                cycleniter_other_input=None,
+                                threshold_type='snr',
+                                threshold_value=4.0,
+                                min_loops=3,
+                                max_loops=20,
+                                max_total_niter=None,
+                                convergence_fracflux=convergence_fracflux,
+                                convergence_totalflux=None,
+                                convergence_fluxperniter=None,
+                                use_absolute_delta=True,
+                                stop_at_negative=True,
+                                remask_each_loop=False,
+                                force_dirty_image=False,
+                                convergence_noise_z_threshold=convergence_noise_z_threshold,
+                                )
 
                 if backup:
                     imr.copy_imaging(
@@ -1244,6 +1276,59 @@ if casa_enabled:
                                            remove_chunks=remove_chunks)
 
             os.chdir(cwd)
+
+        @CleanCallFunctionDecorator
+        def task_mask_noise_channels(
+            self,
+            chunk_num: int | None = None,
+            channel_noise_sigma_threshold: float = 3.0,
+        ):
+            """
+            Create a mask to remove noise-only channels
+
+            Args:
+                chunk_num (int, optional): Chunk number. Defaults
+                    to None, which will loop over all chunks
+                channel_noise_sigma_threshold (float, optional): Channel noise threshold.
+                    Defaults to 3.
+            """
+
+            # get imagename
+
+            imagename = self._fname_dict(self.image_root,
+                                         imaging_method=self.imaging_method)['image']
+
+            # print message
+            logger.info("")
+            logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
+            logger.info("Creating noise channel mask for:")
+            logger.info(str(imagename))
+            logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
+            logger.info("")
+
+            if self._dry_run:
+                return True
+
+            chunks_iter = self.return_valid_chunks(chunk_num=chunk_num)
+
+            for ii, this_chunk_num in enumerate(chunks_iter):
+                logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
+                logger.info("Noise channel masking chunk {0} of {1}".format(ii, len(chunks_iter)))
+                logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%")
+
+                image_root = self.chunk_params[this_chunk_num]["full_imagename"]
+
+                # Noise channel mask
+                msr.mask_noise_channels(
+                    imaging_method=self.imaging_method,
+                    cube_root=image_root,
+                    sigma_threshold=channel_noise_sigma_threshold,
+                    suffix_in="",
+                    suffix_out="",
+                    operation="AND",
+                )
+
+            return True
 
 
         @CleanCallFunctionDecorator
@@ -1422,12 +1507,13 @@ if casa_enabled:
                     else:
                         mask_name = "{}.mask".format(self.chunk_params[this_chunk_num]['full_imagename'])
 
-                    mask_stats = msr.stat_cube(cube_file=mask_name)
-                    if mask_stats['sum'] == 0:
-                        skip_this_step = True
-                        logger.info("")
-                        logger.info("The clean mask is empty and SKIP_SINGLESCALE_IF_MASK_EMPTY is True. Skipping the singlescale clean step.")
-                        logger.info("")
+                    if os.path.exists(mask_name):
+                        mask_stats = msr.stat_cube(cube_file=mask_name)
+                        if mask_stats['sum'] == 0:
+                            skip_this_step = True
+                            logger.info("")
+                            logger.info("The clean mask is empty and SKIP_SINGLESCALE_IF_MASK_EMPTY is True. Skipping the singlescale clean step.")
+                            logger.info("")
 
                 if not skip_this_step:
                     imr.clean_loop(
@@ -1579,33 +1665,35 @@ if casa_enabled:
         #############################
 
         def recipe_phangsalma_imaging(
-                self,
-                chunk_num=None,
-                extra_ext_in=None,
-                suffix_in=None,
-                extra_ext_out=None,
-                do_dirty_image=True,
-                do_revert_to_dirty=True,
-                do_read_clean_mask=True,
-                do_multiscale_clean=True,
-                do_revert_to_multiscale=True,
-                do_singlescale_mask=True,
-                singlescale_mask_high_snr=None,
-                singlescale_mask_low_snr=None,
-                singlescale_mask_absolute=False,
-                skip_singlescale_if_mask_empty=True,
-                do_singlescale_clean=True,
-                do_revert_to_singlescale=True,
-                do_recombine_cubes=False,
-                do_export_to_fits=True,
-                do_cleanup=True,
-                convergence_fracflux=0.01,
-                convergence_noise_z_threshold=None,
-                singlescale_threshold_value=1.0,
-                dynamic_sizing=True,
-                force_square=False,
-                export_multiscale=False,
-                overwrite=False,
+            self,
+            chunk_num=None,
+            extra_ext_in=None,
+            suffix_in=None,
+            extra_ext_out=None,
+            do_dirty_image=True,
+            do_revert_to_dirty=True,
+            do_read_clean_mask=True,
+            skip_multiscale_if_mask_empty=True,
+            do_multiscale_clean=True,
+            do_revert_to_multiscale=True,
+            do_singlescale_mask=True,
+            singlescale_mask_high_snr=None,
+            singlescale_mask_low_snr=None,
+            singlescale_mask_absolute=False,
+            skip_singlescale_if_mask_empty=True,
+            do_singlescale_clean=True,
+            do_revert_to_singlescale=True,
+            do_recombine_cubes=False,
+            do_export_to_fits=True,
+            do_cleanup=True,
+            convergence_fracflux=0.01,
+            convergence_noise_z_threshold=None,
+            channel_noise_sigma_threshold=None,
+            singlescale_threshold_value=1.0,
+            dynamic_sizing=True,
+            force_square=False,
+            export_multiscale=False,
+            overwrite=False,
         ):
             """
             PHANGS-ALMA basic imaging recipe.
@@ -1673,11 +1761,20 @@ if casa_enabled:
                 #         target=target, config=config, product=product,
                 #         imaging_method=imaging_method)
 
+                # Mask noise channels if we have a sigma threshold defined
+                if channel_noise_sigma_threshold is not None:
+                    self.task_mask_noise_channels(
+                        chunk_num=chunk_to_iter,
+                        channel_noise_sigma_threshold=channel_noise_sigma_threshold,
+                    )
+
                 # Run a multiscale clean until it converges.
                 if do_multiscale_clean:
                     self.task_multiscale_clean(chunk_num=chunk_to_iter,
                                                convergence_fracflux=convergence_fracflux,
                                                convergence_noise_z_threshold=convergence_noise_z_threshold,
+                                               channel_noise_sigma_threshold=channel_noise_sigma_threshold,
+                                               skip_multiscale_if_mask_empty=skip_multiscale_if_mask_empty,
                                                gather_chunks_into_cube=False,
                                                )
 
