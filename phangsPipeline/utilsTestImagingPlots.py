@@ -61,7 +61,6 @@ from .check_imports import is_casa_installed
 casa_enabled = is_casa_installed()
 
 if casa_enabled:
-    import analysisUtils as au
     from . import casaStuff
 
 from . import utilsFilenames
@@ -107,7 +106,7 @@ def _read_image_data(image_file):
     # Try CASA image
     if casa_enabled and os.path.isdir(image_file):
         try:
-            myia = au.createCasaTool(casaStuff.iatool)
+            myia = casaStuff.iatool()
             myia.open(image_file)
             data = myia.getchunk()
             csys = myia.coordsys()

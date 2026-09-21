@@ -55,9 +55,6 @@ else:
 
 if casa_enabled:
 
-    # Analysis utilities
-    import analysisUtils as au
-
     from .clean_call import CleanCall
 
     from . import utilsLines as lines
@@ -257,7 +254,7 @@ if casa_enabled:
                 logger.warning(f"PSF file not found: {psf_file}")
                 return None
 
-            myia = au.createCasaTool(casaStuff.iatool)
+            myia = casaStuff.iatool()
             myia.open(psf_file)
 
             beam_info = {}

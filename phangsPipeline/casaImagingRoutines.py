@@ -7,11 +7,11 @@ import inspect
 import logging
 import os
 
-import analysisUtils as au
 import numpy as np
 
 from . import casaMaskingRoutines as cmr
 from . import casaStuff
+from .casaVisRoutines import get_spw_info, pick_cell_and_im_size
 from .clean_call import CleanCall
 
 logger = logging.getLogger(__name__)
@@ -50,65 +50,21 @@ def estimate_cell_and_imsize(
     else:
         pblevel = clean_call.get_param('pblimit')
 
-    # These are the CASA-preferred sizes for fast FFTs
-
-    valid_sizes = []
-    for ii in range(10):
-        for kk in range(3):
-            for jj in range(3):
-                valid_sizes.append(2 ** (ii + 1) * 5 ** jj * 3 ** kk)
-    valid_sizes = sorted(valid_sizes)
-    valid_sizes = np.array(valid_sizes)
-
-    # Cell size implied by baseline distribution from analysis
-    # utilities.
-
-    au_cellsize, au_imsize, _ = au.pickCellSize(infile,
-                                                imsize=True,
-                                                npix=oversamp,
-                                                intent='',
-                                                pblevel=pblevel,
-                                                )
-    xextent = au_cellsize * au_imsize[0] * 1.2
-    yextent = au_cellsize * au_imsize[1] * 1.2
-
-    # Make the cell size a nice round number
-
-    if au_cellsize < 0.01:
-        cell_size = au_cellsize
-    elif 0.01 <= au_cellsize < 0.05:
-        cell_size = np.floor(au_cellsize / 0.005) * 0.005
-    elif 0.05 <= au_cellsize < 0.1:
-        cell_size = np.floor(au_cellsize / 0.01) * 0.01
-    elif 0.1 <= au_cellsize < 0.5:
-        cell_size = np.floor(au_cellsize / 0.05) * 0.05
-    elif 0.5 <= au_cellsize < 1.0:
-        cell_size = np.floor(au_cellsize / 0.1) * 0.1
-    elif 1.0 <= au_cellsize < 2.0:
-        cell_size = np.floor(au_cellsize / 0.25) * 0.25
-    elif 2.0 <= au_cellsize < 5.0:
-        cell_size = np.floor(au_cellsize / 0.5) * 0.5
-    else:
-        cell_size = np.floor(au_cellsize / 1.0) * 0.5
-
-    # Now make the image size a good number for the FFT
-
-    need_cells_x = xextent / cell_size
-    need_cells_y = yextent / cell_size
-
-    cells_x = np.min(valid_sizes[valid_sizes > need_cells_x])
-    cells_y = np.min(valid_sizes[valid_sizes > need_cells_y])
+    # Cell size implied by baseline distribution
+    cell_size, image_size = pick_cell_and_im_size(
+        infile,
+        npix=oversamp,
+        pblevel=pblevel,
+    )
 
     # If requested, force the mosaic to be square. This avoids
     # pathologies in CASA versions 5.1 and 5.3.
-
     if force_square:
-        if cells_y < cells_x:
-            cells_y = cells_x
-        if cells_x < cells_y:
-            cells_x = cells_y
+        if image_size[0] < image_size[1]:
+            image_size[1] = image_size[0]
+        if image_size[0] > image_size[1]:
+            image_size[0] = image_size[1]
 
-    image_size = [int(cells_x), int(cells_y)]
     cell_size_string = str(cell_size) + 'arcsec'
 
     return cell_size_string, image_size
@@ -786,18 +742,17 @@ def clean_loop(
     working_call.set_param('calcpsf', False)
 
     # Note the number of channels, which is used in setting the number
-    # of iterations that we give to an individual clean call.
-
-    vm = au.ValueMapping(working_call.get_param('vis'))
-
-    # If we have a number of channels defined, then use that
+    # of iterations that we give to an individual clean call. If we
+    # have a number of channels defined, then use that
     nchan = working_call.get_param('nchan')
 
     # Otherwise, pull the total number of channels from the spwInfo
     if nchan is None:
         nchan = -1
     if nchan <= 0:
-        nchan = vm.spwInfo[0]['numChannels']
+        vis = working_call.get_param('vis')
+        spw_info = get_spw_info(vis)
+        nchan = spw_info[0]['numChannels']
 
     # Create a text record of progress through successive clean calls.
 
@@ -1016,7 +971,7 @@ def clean_loop(
             pb_image = (_imagename + '.pb') if _imagename else None
             if pb_image and os.path.isdir(pb_image):
                 try:
-                    myia = au.createCasaTool(casaStuff.iatool)
+                    myia = casaStuff.iatool()
                     myia.open(pb_image)
                     pb_data = myia.getchunk()
                     myia.close()
@@ -1115,7 +1070,7 @@ def calc_residual_statistics(
         logger.error('Error! The input file "' + mask_name + '" was not found!')
         return
 
-    myia = au.createCasaTool(casaStuff.iatool)
+    myia = casaStuff.iatool()
 
     myia.open(mask_name)
     mask = myia.getchunk()

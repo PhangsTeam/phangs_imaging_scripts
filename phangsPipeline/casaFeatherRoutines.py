@@ -6,7 +6,6 @@ combination using CASA's feather.
 import logging
 import os
 
-import analysisUtils as au
 import numpy as np
 
 from . import casaCubeRoutines as ccr
@@ -115,12 +114,12 @@ def prep_sd_for_feather(
             overwrite=overwrite)
 
     # Get out and match axis orders from interferometric images
-    myia = au.createCasaTool(casaStuff.iatool)
+    myia = casaStuff.iatool()
     myia.open(interf_file)
     interf_cs = myia.coordsys()
     myia.close()
 
-    myia = au.createCasaTool(casaStuff.iatool)
+    myia = casaStuff.iatool()
     myia.open(current_outfile)
     sd_cs = myia.coordsys()
     myia.close()
@@ -235,7 +234,7 @@ def feather_two_cubes(
         os.system('cp -rf '+interf_file+' '+current_interf_file)
         os.system('cp -rf '+sd_file+' '+current_sd_file)
 
-        myia = au.createCasaTool(casaStuff.iatool)
+        myia = casaStuff.iatool()
 
         # As noted in [https://casa.nrao.edu/docs/casaref/image.putchunk.html], 
         # "If all the pixels didn't easily fit in memory, you would iterate through 
@@ -390,7 +389,7 @@ def feather_two_cubes(
 
     # Finally, if we don't have a 4th (Stokes I) axis, add this
     # here to avoid feather crashing
-    myia = au.createCasaTool(casaStuff.iatool)
+    myia = casaStuff.iatool()
 
     myia.open(current_interf_file)
     interf_shape = myia.shape()
