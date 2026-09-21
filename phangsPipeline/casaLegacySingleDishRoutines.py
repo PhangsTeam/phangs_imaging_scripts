@@ -49,7 +49,12 @@ import analysisUtils as au
 import numpy as np
 
 from . import casaStuff
-from .utilsSingleDish import getTPSampling, get_first_arr_val
+from .utilsSingleDish import (
+    getTPSampling,
+    get_first_arr_val,
+    get_sourcename,
+    read_source_coordinates,
+)
 
 es = au.stuffForScienceDataReduction()
 
@@ -86,19 +91,11 @@ def checkpipeline():
         logger.info("> Setting the variable 'pipeline' to False")
         return False
 
-# Creating CASA tools
-#def createCasaTool(mytool):
-#
-#    if (type(casac.Quantity) != type):  # casa 4.x
-#        myt = mytool()
-#    else:  # casa 3.x
-#        myt = mytool.create()
-#    return(myt)
 
 # Retrieve name of the column
 def getDataColumnName(inputms):
 
-    mytb = au.createCasaTool(casaStuff.tbtool)
+    mytb = casaStuff.tbtool()
     mytb.open(inputms)
     colnames = mytb.colnames()
     if 'FLOAT_DATA' in colnames:
@@ -112,7 +109,7 @@ def getDataColumnForSDBaseline(vis):
     """
     Returns the names of the corrected data columns (corrected) in a measurement set.
     """
-    mytb = au.createCasaTool(casaStuff.tbtool)
+    mytb = casaStuff.tbtool()
     mytb.open(vis)
     names = copy.copy(mytb.colnames())
     mytb.close()
@@ -178,8 +175,8 @@ def scaleAutocorr(vis, scale=1., antenna='', spw='', field='', scan=''):
         logger.warning("No table.dat. This does not appear to be an MS.")
         return
 
-    mymsmd = au.createCasaTool(casaStuff.msmdtool)
-    mytb = au.createCasaTool(casaStuff.tbtool)
+    mymsmd = casaStuff.msmdtool()
+    mytb = casaStuff.tbtool()
 
     conditions = ["ANTENNA1==ANTENNA2"]
 
@@ -242,7 +239,7 @@ def scaleAutocorr(vis, scale=1., antenna='', spw='', field='', scan=''):
 # Create vector with antenna names
 def read_ants_names(filename):
 
-    mytb = au.createCasaTool(casaStuff.tbtool)
+    mytb = casaStuff.tbtool()
     mytb.open(filename + '/ANTENNA')
     vec_ants = mytb.getcol('NAME')
     mytb.close()
@@ -266,7 +263,7 @@ def get_tsysmap(tsysmap,spws_scie,spws_tsys,freq_rep_scie,freq_rep_tsys):
 def read_spw(filename,source):
 
     # Tsys spws (index)
-    mytb = au.createCasaTool(casaStuff.tbtool)
+    mytb = casaStuff.tbtool()
     mytb.open(filename + '/SYSCAL')
 
     spwstsys  = mytb.getcol('SPECTRAL_WINDOW_ID')
@@ -315,7 +312,7 @@ def read_spw(filename,source):
 # Get information of the source velocity
 def read_vel_source(filename,source):
 
-    mytb  = au.createCasaTool(casaStuff.tbtool)
+    mytb  = casaStuff.tbtool()
     mytb.open(filename + '/SOURCE')
     names = mytb.getcol('NAME')
     numli = mytb.getcol('NUM_LINES')
@@ -456,7 +453,7 @@ def convert_vel2chan_line(filename_in,freq_rest,vel_line,spw_line,coords,date):
     freq2_topo = au.lsrkToTopo(freq2, date, ra, dec)
 
     if fsuffix == '.asap':
-        mytb  = au.createCasaTool(casaStuff.tbtool)
+        mytb  = casaStuff.tbtool()
         mytb.open(filename_in)
         nchan = mytb.getkeyword('nChan')
         if_eq = mytb.getcol('FREQ_ID',startrow=1,nrow=1)
@@ -470,7 +467,7 @@ def convert_vel2chan_line(filename_in,freq_rest,vel_line,spw_line,coords,date):
         mytb.close()
 
     else:
-        mytb  = au.createCasaTool(casaStuff.tbtool)
+        mytb  = casaStuff.tbtool()
         mytb.open(filename_in+os.sep+'SPECTRAL_WINDOW')
         spwids = np.arange(mytb.nrows())
         spw_line = -1
@@ -580,73 +577,6 @@ def extract_jyperk(filename, spw_line, pipeline):
         exec(vec_jyperk) in kw
         jyperk = kw['jyperk']
         return jyperk
-
-# Read source coordinates
-def read_source_coordinates(filename,source):
-
-    coord_source = au.getRADecForSource(filename,source)
-    RA_h  = (coord_source.split(' ')[0]).split(':')[0]
-    RA_m  = (coord_source.split(' ')[0]).split(':')[1]
-    RA_s  = (coord_source.split(' ')[0]).split(':')[2]
-    DEC_d = (coord_source.split(' ')[1]).split(':')[0]
-    DEC_m = (coord_source.split(' ')[1]).split(':')[1]
-    DEC_s = (coord_source.split(' ')[1]).split(':')[2]
-    coord = "J2000  "+str(RA_h)+"h"+str(RA_m)+"m"+str(RA_s[0:6])+" "+str(DEC_d)+"d"+str(DEC_m)+"m"+str(DEC_s)
-    return coord
-
-# Get source name
-def get_sourcename(filename,
-                   source='all',
-                   ):
-
-    mytb   = au.createCasaTool(casaStuff.msmdtool)
-    mytb.open(filename)
-
-    # Get source field names
-    fieldnames = mytb.fieldnames()
-
-    # If we're looking for all intents, then just take the (first) science target
-    if source == 'all':
-        field = mytb.fieldsforintent('OBSERVE_TARGET#ON_SOURCE')[0]
-
-    # Else, key in on the source name. Do this in a regex-style
-    else:
-
-        # For field selection, this can be done with forward slashes,
-        # so make sure to strip them
-        if source.startswith("/"):
-            source = source.strip("/")
-
-        # Get science fieldnames as names
-        fieldnames_asname = mytb.fieldsforintent('OBSERVE_TARGET#ON_SOURCE', asnames=True)
-
-        regex_matches = [re.fullmatch(source, x) for x in fieldnames_asname]
-        regex_idxs = [x is not None for x in regex_matches]
-        found_field = any(regex_idxs)
-
-        # If we've found a match, update the source name with the first
-        # fieldname
-        if found_field:
-            source = fieldnames_asname[regex_idxs][0]
-
-        if not found_field:
-            logger.warning(f"source {source} not in field names: {', '.join(fieldnames)}")
-            return None
-
-        field = mytb.fieldsforname(source)
-
-        # If we don't find anything, get the science targets
-        if len(field) == 0:
-            field = mytb.fieldsforintent('OBSERVE_TARGET#ON_SOURCE')
-
-        # Take the first result
-        field = field[0]
-
-    source_name = fieldnames[field]
-
-    mytb.close()
-
-    return source_name
 
 # Create string of spws to apply the Tsys
 def str_spw_apply_tsys(spws_info):
@@ -1491,7 +1421,7 @@ def imaging(source, name_line, phcenter, vel_source, source_vel_kms, vwidth_kms,
         infile = ms_concat_filename
 
     # Read frequency
-    mymsmd = au.createCasaTool(casaStuff.msmdtool)
+    mymsmd = casaStuff.msmdtool()
     mymsmd.open(infile)
     freq = mymsmd.meanfreq(0)
     mymsmd.close()
@@ -1585,7 +1515,7 @@ def imaging(source, name_line, phcenter, vel_source, source_vel_kms, vwidth_kms,
     #ia.open('ALMA_TP.'+source+'.'+name_line+suffix+'.image')
     #ia.setrestoringbeam(major = str(sfbeam)+'arcsec', minor = str(sfbeam)+'arcsec', pa = '0deg')
     #ia.done()
-    myia = au.createCasaTool(casaStuff.iatool)
+    myia = casaStuff.iatool()
     myia.open(outimage) # 'ALMA_TP.'+source+'.'+name_line+suffix+'.image'
     myia.setrestoringbeam(major = str(sfbeam)+'arcsec', minor = str(sfbeam)+'arcsec', pa = '0deg')
     mask = myia.getchunk(getmask=True)
@@ -1931,6 +1861,5 @@ def run_ALMA_TP_tools(
 
     logger.info("> Changing directory to "+ori_path)
     os.chdir(ori_path)
-
 
 

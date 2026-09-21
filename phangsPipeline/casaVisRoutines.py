@@ -7,7 +7,6 @@ import logging
 import os
 import shutil
 
-import analysisUtils as au
 import astropy.constants as const
 import astropy.units as u
 import numpy as np
@@ -234,7 +233,7 @@ def split_science_targets(
     # Verify the column to use. If present, we use the corrected
     # column. If not, then we use the data column.
 
-    mytb = au.createCasaTool(casaStuff.tbtool)
+    mytb = casaStuff.tbtool()
     mytb.open(infile, nomodify = True)
     colnames = mytb.colnames()
     if 'CORRECTED_DATA' in colnames:
@@ -571,14 +570,13 @@ def find_spws_for_line(
     spw_lowest_ghz = None
     spw_highest_ghz = None
 
-    logger.debug("... vm = au.ValueMapping(infile) ...")
-    vm = au.ValueMapping(infile)
-    logger.debug("... vm = au.ValueMapping(infile) done")
+    spw_info = get_spw_info(infile)
+    scans_for_spw = get_scans_for_spw(infile)
 
-    for this_spw in vm.spwInfo.keys():
+    for this_spw in spw_info.keys():
 
-        spw_high_ghz = np.max(vm.spwInfo[this_spw]['edgeChannels'])/1e9
-        spw_low_ghz = np.min(vm.spwInfo[this_spw]['edgeChannels'])/1e9
+        spw_high_ghz = np.max(spw_info[this_spw]['edgeChannels'])/1e9
+        spw_low_ghz = np.min(spw_info[this_spw]['edgeChannels'])/1e9
         logger.debug(
             "... spw: %s, freq: %.6f - %.6f GHz" %
             (this_spw, spw_low_ghz, spw_high_ghz))
@@ -590,12 +588,12 @@ def find_spws_for_line(
             continue
 
         if max_chanwidth_ghz is not None:
-            spw_chanwidth_ghz = abs(vm.spwInfo[this_spw]['chanWidth'])/1e9
+            spw_chanwidth_ghz = abs(spw_info[this_spw]['chanWidth'])/1e9
             if spw_chanwidth_ghz > max_chanwidth_ghz:
                 continue
 
         if require_data:
-            if len(vm.scansForSpw[this_spw]) == 0:
+            if len(scans_for_spw[this_spw]) == 0:
                 continue
 
         if require_full_line_coverage and not (
@@ -647,8 +645,7 @@ def find_spws_for_science(
         infile=None, require_data=False, exit_on_error=True, as_list=False):
     """
     List all spectral windows that we judge likely to be used for
-    science. Mostly wraps analysisUtils rather than reinventing the
-    wheel.
+    science.
     """
 
     # Check inputs
@@ -667,25 +664,26 @@ def find_spws_for_science(
             'Error! The input uv data measurement set "'+infile +
             '"does not exist!')
 
-    # Call the analysisUtil version.
-
-    spw_string = au.getScienceSpws(
-        infile, intent='OBSERVE_TARGET*')
+    # Get science SPWs
+    spw_string = get_science_spws(
+        vis=infile,
+        intent='OBSERVE_TARGET*',
+    )
     if spw_string is None or len(spw_string) == 0:
-        spw_string = au.getScienceSpws(
-            infile, intent='OBSERVE_TARGET#ON_SOURCE')
+        spw_string = get_science_spws(
+            vis=infile,
+            intent='OBSERVE_TARGET#ON_SOURCE',
+        )
 
     spw_list = []
     for this_spw_string in spw_string.split(','):
         spw_list.append(int(this_spw_string))
 
-    # Shouldn't get here, I think, because of the analysisUtils logic
-
     if require_data:
-        vm = au.ValueMapping(infile)
+        scans_for_spw = get_scans_for_spw(infile)
 
         for spw in spw_list:
-            if len(vm.scansForSpw[spw]) == 0:
+            if len(scans_for_spw[spw]) == 0:
                 spw_list.remove(spw)
     # Return
 
@@ -740,18 +738,18 @@ def spw_string_for_freq_ranges(
     if not isinstance(just_spw, list):
         just_spw = [just_spw]
 
-    vm = au.ValueMapping(infile)
+    spw_info = get_spw_info(infile)
 
     # Loop over spectral windows
     spw_flagging_string = ''
     first_string = True
-    for this_spw in vm.spwInfo:
+    for this_spw in spw_info:
 
         if len(just_spw) > 0:
             if this_spw not in just_spw:
                 continue
 
-        freq_axis = vm.spwInfo[this_spw]['chanFreqs']
+        freq_axis = spw_info[this_spw]['chanFreqs']
         half_chan = abs(freq_axis[1]-freq_axis[0])*0.5
         chan_axis = np.arange(len(freq_axis))
         mask_axis = np.zeros_like(chan_axis, dtype='bool')
@@ -843,7 +841,7 @@ def compute_common_chanwidth(
             this_infile, line, vsys_kms=vsys_kms, vwidth_kms=vwidth_kms,
             require_full_line_coverage=require_full_line_coverage)
 
-        chan_widths_hz = au.getChanWidths(this_infile, spw_list_string)
+        chan_widths_hz = get_chan_widths(this_infile, spw_list_string)
 
         # Convert to km/s and return
         for this_chan_width_hz in chan_widths_hz:
@@ -951,10 +949,10 @@ def batch_extract_line(
 
                 # This zaps the whole table:
                 if os.path.exists(this_outfile+os.sep+'POINTING'):
-                    au.clearPointingTable(this_outfile)
+                    clear_pointing_table(this_outfile)
                 else:
                     copy_pointing = False
-                    #logger.debug('Warning! Failed to run au.clearPointingTable(%r)'%(this_outfile))
+                    #logger.debug('Warning! Failed to run clear_pointing_table(%r)'%(this_outfile))
 
     # Allow a small tolerance in the channel width
     if allow_freqtol_chanfrac:
@@ -1045,7 +1043,7 @@ def suggest_extraction_scheme(
 
     for this_infile in infile_list:
 
-        vm = au.ValueMapping(this_infile)
+        spw_info = get_spw_info(this_infile)
 
         spw_list = find_spws_for_line(
             this_infile, restfreq_ghz=restfreq_ghz,
@@ -1058,7 +1056,7 @@ def suggest_extraction_scheme(
 
         for this_spw in spw_list:
 
-            chan_width_ghz = np.abs(vm.spwInfo[this_spw]['chanWidth'])/1e9
+            chan_width_ghz = np.abs(spw_info[this_spw]['chanWidth'])/1e9
 
             # Using RADIO convention:
             chan_width_kms = chan_width_ghz/restfreq_ghz * sol_kms
@@ -1072,7 +1070,7 @@ def suggest_extraction_scheme(
             # Figure out the binfactor
             this_binfactor = int(np.floor(target_chan_kms/chan_width_kms))
             # clamp to nchan if the binfactor exceeds the number of channels in the spw
-            nchan_spw = vm.spwInfo[this_spw]['numChannels']
+            nchan_spw = spw_info[this_spw]['numChannels']
             if this_binfactor > nchan_spw:
                 this_binfactor = nchan_spw
 
@@ -1536,7 +1534,7 @@ def build_mstransform_call(
     # Determine the column to use
 
     if datacolumn is None:
-        mytb = au.createCasaTool(casaStuff.tbtool)
+        mytb = casaStuff.tbtool()
         mytb.open(infile, nomodify = True)
         colnames = mytb.colnames()
         if 'CORRECTED_DATA' in colnames:
@@ -1596,7 +1594,7 @@ def build_mstransform_call(
             vlow_kms=vstart_kms, vhigh_kms=vstart_kms+vwidth_kms)
         # line_freq_ghz = (line_low_ghz+line_high_ghz)*0.5
 
-        max_chan_ghz = np.max(np.abs(au.getChanWidths(infile, spw)))/1e9
+        max_chan_ghz = np.max(np.abs(get_chan_widths(infile, spw)))/1e9
 
         # Using RADIO velocity convention:
         current_chan_kms = max_chan_ghz/restfreq_ghz*sol_kms
@@ -1740,7 +1738,7 @@ def reweight_data(
     # Determine column to use
 
     if datacolumn is None:
-        mytb = au.createCasaTool(casaStuff.tbtool)
+        mytb = casaStuff.tbtool()
         mytb.open(infile, nomodify = True)
         colnames = mytb.colnames()
         if 'CORRECTED_DATA' in colnames:
@@ -1757,15 +1755,15 @@ def reweight_data(
     exclude_str = ''
     if (edge_chans is not None) or (edge_kms is not None):
 
-        vm = au.ValueMapping(infile)
+        spw_info = get_spw_info(infile)
 
         first = True
-        for this_spw in vm.spwInfo.keys():
+        for this_spw in spw_info.keys():
 
             if edge_kms is not None:
-                spw_high_ghz = np.max(vm.spwInfo[this_spw]['edgeChannels'])/1e9
-                spw_low_ghz = np.min(vm.spwInfo[this_spw]['edgeChannels'])/1e9
-                spw_chanwidth_ghz = abs(vm.spwInfo[this_spw]['chanWidth'])/1e9
+                spw_high_ghz = np.max(spw_info[this_spw]['edgeChannels'])/1e9
+                spw_low_ghz = np.min(spw_info[this_spw]['edgeChannels'])/1e9
+                spw_chanwidth_ghz = abs(spw_info[this_spw]['chanWidth'])/1e9
 
                 mean_freq_ghz = 0.5*(spw_high_ghz+spw_low_ghz)
 
@@ -1787,7 +1785,7 @@ def reweight_data(
 
                 edge_chans = int(np.ceil(edge_kms / mean_chanwidth_kms))
 
-            nchan = vm.spwInfo[this_spw]['numChannels']
+            nchan = spw_info[this_spw]['numChannels']
 
             if edge_chans*2 > nchan:
                 logger.warning(
@@ -1999,7 +1997,7 @@ def batch_extract_continuum(
                     # all SPWs except the first one.
 
                     if clear_pointing:
-                        au.clearPointingTable(this_outfile)
+                        clear_pointing_table(this_outfile)
 
     # Concatenate and combine the output data sets
 
@@ -2107,7 +2105,7 @@ def extract_continuum(
         if not os.path.isdir(outfile + '.touch'):
             os.mkdir(outfile + '.touch')
 
-        mytb = au.createCasaTool(casaStuff.tbtool)
+        mytb = casaStuff.tbtool()
         mytb.open(infile + '.temp_copy', nomodify=True)
         colnames = mytb.colnames()
         if 'CORRECTED_DATA' in colnames:
@@ -2316,9 +2314,9 @@ def noise_spectrum(
         return None
 
     # Note the number of channels in SPW 0
+    spw_info = get_spw_info(vis)
 
-    vm = au.ValueMapping(vis)
-    nchan = vm.spwInfo[0]['numChannels']
+    nchan = spw_info[0]['numChannels']
     spec = np.zeros(nchan)
     for ii in range(nchan):
         if start_chan is not None:
@@ -2402,89 +2400,12 @@ def estimate_mrs(
 
         tb_subset.close()
 
-        tb_subset = tb.query(" && ".join(subset_conditions))
-        total_rows = tb_subset.nrows()
-        
-        uv_distance_m = []
-
-        # Loop over in chunks to reduce memory cost
-        for startrow in range(0, total_rows, chunk_size):
-            nrow = min(chunk_size, total_rows - startrow)
-
-            uvw = np.asarray(
-                tb_subset.getcol("UVW",
-                                   startrow=startrow,
-                                   nrow=nrow,
-                                   rowincr=1,
-                                   )
-            )
-            antenna1 = np.asarray(
-                tb_subset.getcol(
-                    "ANTENNA1",
-                    startrow=startrow,
-                    nrow=nrow,
-                    rowincr=1,
-                )
-            )
-            antenna2 = np.asarray(
-                tb_subset.getcol(
-                    "ANTENNA2",
-                    startrow=startrow,
-                    nrow=nrow,
-                    rowincr=1,
-                )
-            )
-            ddid = np.asarray(
-                tb_subset.getcol(
-                    "DATA_DESC_ID",
-                    startrow=startrow,
-                    nrow=nrow,
-                    rowincr=1,
-                )
-            )
-            flag_row = np.asarray(
-                tb_subset.getcol(
-                    "FLAG_ROW",
-                    startrow=startrow,
-                    nrow=nrow,
-                    rowincr=1,
-                ),
-                dtype=bool,
-            )
-            flags = np.asarray(
-                tb_subset.getcol(
-                    "FLAG",
-                    startrow=startrow,
-                    nrow=nrow,
-                    rowincr=1,
-                ),
-                dtype=bool,
-            )
-
-            # CASA normally returns UVW as (3, nrow).
-            if uvw.shape[0] != 3 and uvw.shape[-1] == 3:
-                uvw = uvw.T
-
-            uvdm = np.hypot(uvw[0], uvw[1])
-
-            # FLAG normally has dimensions (ncorr, nchan, nrow).
-            # Keep a row if at least one correlation/channel is unflagged.
-            flag_axes = tuple(range(flags.ndim - 1))
-            completely_flagged = np.all(flags, axis=flag_axes)
-
-            valid = (
-                ~flag_row
-                & ~completely_flagged
-                & (antenna1 != antenna2)
-                & np.isfinite(uvdm)
-                & (uvdm > 0)
-                & (ddid >= 0)
-            )
-
-            # Only take valid values
-            uv_distance_m.extend(uvdm[valid])
-
-        uv_distance_m = np.asarray(uv_distance_m)
+        # Get UV distances in meters
+        uv_distance_m = get_uv_distance_m(
+            tb=tb,
+            subset_conditions=subset_conditions,
+            chunk_size=chunk_size,
+        )
 
         # Now we loop over, take the 5th percentile baseline
         baseline_percentiles = []
@@ -2515,6 +2436,218 @@ def estimate_mrs(
     result["mrs"] = np.nanmax([r[-1] for r in result["mrs_per_obs_id"].items()])
 
     return result
+
+def estimate_synthesised_beam(
+    vis: str,
+    baseline_percentile: float = 80.0,
+    beam_factor: float = 0.574,
+    use_first_field: bool = True,
+    chunk_size: int = 100_000,
+) -> float:
+    """
+    Estimate the synthesised beam for a measurement set.
+
+    This function is specifically designed to sidestep the biases that can arise
+    from concatenating measurement sets. It calculates some minimum baseline percentile
+    from each unique observation ID, and then uses the minimum of these to for the beam size.
+    By default, this function uses 0.574 * 80th baseline percentile, to match the analysisUtils default.
+
+    Args:
+        vis (str): Path to measurement set
+        baseline_percentile (float): The percentile of the baseline distribution to use.
+            Defaults to 80.
+        beam_factor (float): Factor to convert from baseline percentile to synthesised beam.
+            Defaults to 0.574.
+        use_first_field (bool): Whether to only use the first field.
+            Defaults to True.
+        chunk_size (int): Number of rows to process in each chunk, to limit memory usage.
+            Defaults to 100,000.
+
+    Returns:
+        float: The estimated synthesised beam in arcseconds
+    """
+
+    # Get the representative frequency
+    rep_freq = get_representative_freq(vis)
+    logger.debug(f"Representative frequency: {rep_freq}")
+
+    # Get a list of the observation IDs
+    obs_ids = get_obs_ids(vis=vis)
+    logger.debug(f"Found {len(obs_ids)} observation IDs")
+
+    tb = casaStuff.tbtool()
+    tb.open(vis)
+
+    # Set up a dictionary to hold all the calculations
+    result = {
+        "representative_frequency": rep_freq.to(u.GHz).value,
+        "synthesised_beam_per_obs_id": {},
+    }
+
+    for obs_id in obs_ids:
+
+        # Downselect on observation ID
+        subset_conditions = [
+            f"OBSERVATION_ID == {obs_id}",
+        ]
+        tb_subset = tb.query(" && ".join(subset_conditions))
+
+        # If we're only using first field, get the first field ID for further downselecting
+        if use_first_field:
+            field_id = tb_subset.getcell("FIELD_ID", 0)
+            subset_conditions.append(f"FIELD_ID == {field_id}")
+
+        tb_subset.close()
+
+        # Get UV distances in meters
+        uv_distance_m = get_uv_distance_m(
+            tb=tb,
+            subset_conditions=subset_conditions,
+            chunk_size=chunk_size,
+        )
+        baseline_for_beam = np.nanpercentile(uv_distance_m, baseline_percentile) * u.m
+
+        # Calculate the synthesised beam in arcsec
+        synthesised_beam = (
+            beam_factor
+            * const.c.to(u.m * u.Hz)
+            / (rep_freq.to(u.Hz) * baseline_for_beam.to(u.m))
+            * u.rad
+        )
+        synthesised_beam = synthesised_beam.to(u.arcsec).value
+
+        result["synthesised_beam_per_obs_id"][obs_id] = synthesised_beam
+
+        logger.debug(f"Calculated synthesised beam of {synthesised_beam} for obs ID {obs_id}")
+
+    tb.close()
+
+    # The synthesised beam is the minimum of the synthesised beams from each observation ID
+    synthesised_beam = np.nanmin([r[-1] for r in result["synthesised_beam_per_obs_id"].items()])
+
+    return synthesised_beam
+
+
+def pick_cell_and_im_size(
+    vis: str,
+    npix: float = 5.0,
+    baseline_percentile: float = 80.0,
+    cellstring: bool = False,
+    roundcell: int = 2,
+    pblevel: float = 0.2,
+    beam_size_factor: float = 0.574,
+    beam_size_use_first_field: bool = True,
+    beam_size_chunk_size: int = 100_000,
+) -> tuple[float | str, list[int]]:
+    """Pick a cell size and image size for a measurement set.
+
+    Args:
+        vis (str): Path to measurement set.
+        npix (float): Number of pixels across the synthesised beam.
+            Defaults to 5.0.
+        baseline_percentile (float): The percentile of the baseline distribution to use for estimating the synthesised
+            beam. Defaults to 80.0.
+        cellstring (bool): Whether to return the cell size as a string with units.
+            Defaults to False.
+        roundcell (int): Number of decimal places to round the cell size to.
+            Defaults to 2.
+        pblevel (float): The primary beam level for calculating image size.
+            Defaults to 0.2.
+        beam_size_factor (float): Factor to convert from baseline percentile to synthesised beam.
+            Defaults to 0.574.
+        beam_size_use_first_field (bool): Whether to only use the first field for estimating the synthesised beam.
+            Defaults to True.
+        beam_size_chunk_size (int): Number of rows to process in each chunk when estimating the synthesised beam.
+            Defaults to 100,000.
+
+    Returns:
+        float or str, list: Tuple of the cell size (potentially as a string) and an associated list of imsize.
+    """
+
+    # Get cell size from synthesised beam and oversample factor
+    synthesised_beam = estimate_synthesised_beam(
+        vis=vis,
+        baseline_percentile=baseline_percentile,
+        beam_factor=beam_size_factor,
+        use_first_field=beam_size_use_first_field,
+        chunk_size=beam_size_chunk_size,
+    )
+    cell_size = synthesised_beam / npix
+
+    # If selected, round to requested number of significant figures
+    if roundcell > 0:
+        cell_size = float(f"{cell_size:.{roundcell}g}")
+
+    # Convert to a cell size with units
+    cell_size_unit = cell_size * u.arcsec
+        
+    if cellstring:
+        cell_size = f"{cell_size}arcsec"
+
+    # Get dish diameter for image size calculation. Use max to get minimum FOV
+    tb = casaStuff.table()
+    tb.open(os.path.join(f"{vis}/ANTENNA"))
+    dish_dia = tb.getcol("DISH_DIAMETER").max()
+    dish_dia = dish_dia * u.m
+    tb.close()
+
+    # Get representative frequency
+    rep_freq = get_representative_freq(vis)
+
+    # Get the source name from the MS metadata
+    msmd = casaStuff.msmdtool()
+    msmd.open(vis)
+
+    # Get a list of all science field IDs, turn into a source name by taking the first
+    # in the MS
+    intents = msmd.intents()
+    field_ids = msmd.fieldsforintent(intents[0])
+    sourcename = msmd.namesforfields(field_ids)[0]
+    logger.debug(f"Using source name {sourcename} for image size calculation")
+    msmd.close()
+    
+    tb = casaStuff.table()
+    tb.open(f"{vis}/FIELD")
+    tb_subset = tb.query(f"NAME == '{sourcename}'")
+    phase_dirs = tb_subset.getcol("PHASE_DIR")
+
+    tb_subset.close()
+    tb.close()
+
+    # Extract RA and Dec arrays (in radians)
+    ra_fields = phase_dirs[0, 0, :] * u.rad
+    dec_fields = phase_dirs[1, 0, :] * u.rad
+    
+    # Get primary beam FWHM
+    fwhm = (1.14 * 1.22 * const.c.to(u.m * u.Hz) / rep_freq.to(u.Hz) / dish_dia) * u.rad
+    
+    # Apply the PB cutoff
+    radius_pb = (fwhm / 2.0) * np.sqrt(np.log(pblevel) / np.log(0.5))
+
+    ra_mins = ra_fields - radius_pb
+    ra_maxs = ra_fields + radius_pb
+    dec_mins = dec_fields - radius_pb
+    dec_maxs = dec_fields + radius_pb
+
+    ra_extent = ra_maxs.max() - ra_mins.min()
+    dec_extent = dec_maxs.max() - dec_mins.min()
+
+    x_extent = ra_extent / cell_size_unit
+    y_extent = dec_extent / cell_size_unit
+
+    # Round this up to a good FFT number for the FFT,
+    # cast to int
+    x_extent = int(1.2 * x_extent)
+    y_extent = int(1.2 * y_extent)
+
+    su = casaStuff.synthesisutils()
+    x_extent = int(su.getOptimumSize(x_extent))
+    y_extent = int(su.getOptimumSize(y_extent))
+    su.done()
+
+    im_size = [x_extent, y_extent]
+
+    return cell_size, im_size
 
 def get_representative_freq(
         vis: str,
@@ -2592,3 +2725,433 @@ def get_obs_ids(vis):
     obs_ids = list(range(nrows))
 
     return obs_ids
+
+
+def get_chan_widths(
+    vis: str,
+    spw: str | int | list = "",
+    velocity: bool = False,
+) -> np.ndarray:
+    """Get channel widths for a given measurement set and SPW selection.
+
+    Args:
+        vis (str): Path to measurement set.
+        spw (str | int | list, optional): SPW selection. Can be a string, integer, or list of integers.
+            Defaults to "" (all SPWs).
+        velocity (bool, optional): If True, return channel widths in km/s.
+            Defaults to False.
+
+    Returns:
+        np.ndarray: Array of channel widths for the selected SPWs. If velocity is True,
+            the widths are in velocity units; otherwise, they are in Hz.
+    """
+
+    if not os.path.exists(vis):
+        raise FileNotFoundError(f"Measurement set '{vis}' not found.")
+
+    msmd = casaStuff.msmdtool()
+    msmd.open(vis)
+
+    # If an empty string or list is passed, selected all SPWs
+    if spw in ["", []]:
+        spw = list(range(msmd.nspw()))
+
+    # If we still have a string, turn to int
+    if isinstance(spw, str):
+        spw = [int(i) for i in spw.split(",")]
+
+    # Make sure spw is a list
+    if not isinstance(spw, list):
+        spw = [spw]
+
+    chan_widths = []
+    mean_freqs = []
+    for s in spw:
+        chan_width = np.median(msmd.chanwidths(s))
+        mean_freq = msmd.meanfreq(s)
+
+        chan_widths.append(chan_width)
+        mean_freqs.append(mean_freq)
+
+    chan_widths = chan_widths * u.Hz
+
+    # Convert to velocity units if requested
+    if velocity:
+        mean_freqs = mean_freqs * u.Hz
+        chan_widths *= const.c.to(u.m * u.Hz) / mean_freqs
+        chan_widths = chan_widths.to(u.km / u.s).value
+    else:
+        chan_widths = chan_widths.to(u.Hz).value
+
+    msmd.close()
+
+    return chan_widths
+
+def get_uv_distance_m(
+    tb: casaStuff.tbtool,
+    subset_conditions: list,
+    chunk_size: int = 100_000,
+) -> np.ndarray:
+    """Get the UV distance in meters for a given table and subset conditions.
+
+    Args:
+        tb (casaStuff.tbtool): The CASA table tool object.
+        subset_conditions (list): List of conditions to subset the table.
+        chunk_size (int): Number of rows to process in each chunk, to limit memory usage.
+        
+    Returns:
+        np.ndarray: Array of UV distances in meters.
+    """
+
+    tb_subset = tb.query(" && ".join(subset_conditions))
+    total_rows = tb_subset.nrows()
+
+    uv_distance_m = []
+
+    # Loop over in chunks to reduce memory cost
+    for startrow in range(0, total_rows, chunk_size):
+        nrow = min(chunk_size, total_rows - startrow)
+
+        uvw = np.asarray(
+            tb_subset.getcol(
+                "UVW",
+                startrow=startrow,
+                nrow=nrow,
+                rowincr=1,
+            )
+        )
+        antenna1 = np.asarray(
+            tb_subset.getcol(
+                "ANTENNA1",
+                startrow=startrow,
+                nrow=nrow,
+                rowincr=1,
+            )
+        )
+        antenna2 = np.asarray(
+            tb_subset.getcol(
+                "ANTENNA2",
+                startrow=startrow,
+                nrow=nrow,
+                rowincr=1,
+            )
+        )
+        ddid = np.asarray(
+            tb_subset.getcol(
+                "DATA_DESC_ID",
+                startrow=startrow,
+                nrow=nrow,
+                rowincr=1,
+            )
+        )
+        flag_row = np.asarray(
+            tb_subset.getcol(
+                "FLAG_ROW",
+                startrow=startrow,
+                nrow=nrow,
+                rowincr=1,
+            ),
+            dtype=bool,
+        )
+        flags = np.asarray(
+            tb_subset.getcol(
+                "FLAG",
+                startrow=startrow,
+                nrow=nrow,
+                rowincr=1,
+            ),
+            dtype=bool,
+        )
+
+        # CASA normally returns UVW as (3, nrow).
+        if uvw.shape[0] != 3 and uvw.shape[-1] == 3:
+            uvw = uvw.T
+
+        uvdm = np.hypot(uvw[0], uvw[1])
+
+        # FLAG normally has dimensions (ncorr, nchan, nrow).
+        # Keep a row if at least one correlation/channel is unflagged.
+        flag_axes = tuple(range(flags.ndim - 1))
+        completely_flagged = np.all(flags, axis=flag_axes)
+
+        valid = (
+            ~flag_row
+            & ~completely_flagged
+            & (antenna1 != antenna2)
+            & np.isfinite(uvdm)
+            & (uvdm > 0)
+            & (ddid >= 0)
+        )
+
+        # Only take valid values
+        uv_distance_m.extend(uvdm[valid])
+
+    tb_subset.close()
+
+    uv_distance_m = np.asarray(uv_distance_m)
+
+    return uv_distance_m
+
+def get_spw_info(
+    vis: str,
+    ignore_wvr: bool = True,
+) -> dict:
+    """Get SPW information from a measurement set.
+
+    Args:
+        vis (str): Path to measurement set.
+        ignore_wvr (bool): Whether to ignore WVR SPWs. Defaults to True.
+
+    Returns:
+        dict: Dictionary containing SPW information, including bandwidth, channel frequencies,
+            channel width, edge channels, sideband, mean frequency, and number of channels.
+    """
+
+    spw_info = {}
+
+    mytb = casaStuff.tbtool()
+    mytb.open(f"{vis}/SPECTRAL_WINDOW")
+
+    # Keep track of number of rows in the table
+    nrows = range(mytb.nrows())
+
+    for i in nrows:
+
+        # Get out useful info
+        bandwidth = mytb.getcell("TOTAL_BANDWIDTH", i)
+        chan_freqs = mytb.getcell("CHAN_FREQ", i)
+        min_freq = min(chan_freqs)
+        max_freq = max(chan_freqs)
+        mean_freq = chan_freqs.mean()
+        num_channels = chan_freqs.shape[0]
+        chan_width = mytb.getcell("CHAN_WIDTH", i)[0]
+        net_sideband = mytb.getcell("NET_SIDEBAND", i)
+
+        # Put this all into a dictionary
+        spw_info[i] = {}
+        spw_info[i]["bandwidth"] = bandwidth
+        spw_info[i]["chanFreqs"] = chan_freqs
+        spw_info[i]["chanWidth"] = chan_width
+        spw_info[i]["edgeChannels"] = [min_freq, max_freq]
+        if net_sideband == 2:
+            spw_info[i]["sideband"] = 1
+        else:
+            spw_info[i]["sideband"] = -1
+        spw_info[i]["meanFreq"] = mean_freq
+        spw_info[i]["numChannels"] = num_channels
+
+        # If ignoring WVR, then remove and log this
+        if ignore_wvr and (num_channels == 4):
+            logger.debug(f"Ignoring spectral window {i} because it is WVR related")
+            spw_info.pop(i)
+
+    mytb.close()
+
+    return spw_info
+
+def get_scans_for_spw(
+        vis: str,
+) -> dict:
+    """Get the unique scan numbers for each spectral window in a measurement set.
+
+    Args:
+        vis (str): Path to measurement set.
+
+    Returns:
+        dict: Dictionary mapping SPW IDs to unique scan numbers.
+    """
+
+    # Get out SPWs for each data description ID
+    tb = casaStuff.tbtool()
+    tb.open(f"{vis}/DATA_DESCRIPTION")
+    spw_for_data_desc_id = tb.getcol("SPECTRAL_WINDOW_ID")
+    tb.close()
+
+    tb = casaStuff.tbtool()
+    tb.open(vis)
+
+    data_desc_id = tb.getcol('DATA_DESC_ID')
+    scans = tb.getcol('SCAN_NUMBER')
+
+    scans_for_spw = {}
+    for i in spw_for_data_desc_id:
+        spw = spw_for_data_desc_id[i]
+        indices = np.where(data_desc_id == i)
+        scans_for_spw[spw] = np.unique(scans[indices])
+        
+    tb.close()
+
+    return scans_for_spw
+
+def get_science_spws(
+    vis: str,
+    intent: str = "OBSERVE_TARGET#ON_SOURCE",
+    return_string: bool = True,
+    return_list_of_strings: bool = False,
+    return_freq_ranges: bool = False,
+    tdm: bool = True,
+    fdm: bool = True,
+    sqld: bool = False,
+    chavg: bool = False,
+) -> str | list[int | str] | dict:
+    """ Get science SPWs from a measurement set based.
+
+    Will select SPWs based on specified intent. For ALMA data,
+    it also can ignore channel-averaged and SQLD SPWs.
+
+    Args:
+        vis (str): Path to measurement set.
+        intent (str): The intent to filter by.
+            Defaults to "OBSERVE_TARGET#ON_SOURCE".
+        return_string (bool): If True, return a comma-separated string of SPWs.
+            Defaults to True.
+        return_list_of_strings (bool): If True, return a list of SPWs as strings.
+            Defaults to False.
+        return_freq_ranges (bool): If True, return a dictionary with frequency ranges.
+            Defaults to False.
+        tdm (bool): If True, include TDM SPWs.
+            Defaults to True.
+        fdm (bool): If True, include FDM SPWs.
+            Defaults to True.
+        sqld (bool): If True, include SQLD SPWs.
+            Defaults to False.
+        chavg (bool): If True, include channel-averaged SPWs.
+            Defaults to False.
+
+    Returns:
+        str: Comma-separated string of science SPWs if return_string is True.
+        list[int]: List of science SPWs as integers if return_list_of_strings is False.
+        list[str]: List of science SPWs as strings if return_list_of_strings is True.
+        dict: Dictionary of science SPWs with frequency ranges if return_freq_ranges is True.
+    """
+
+    if return_string and return_list_of_strings:
+        raise ValueError("You can only specify one of: return_string, return_list_of_strings")
+
+    msmd = casaStuff.msmdtool()
+    msmd.open(vis)
+
+    all_intents = msmd.intents()
+
+    if intent not in all_intents and intent != "":
+        for i in all_intents:
+            if i.find(intent) >= 0:
+                intent = i
+                logger.debug(f"Translated intent to {i}")
+                break
+
+    # Minimum match OBSERVE_TARGET to OBSERVE_TARGET#UNSPECIFIED
+    value = [i.find(intent.replace("*", "")) for i in all_intents]
+
+    # If any intent gives a match, the mean value of the location list will be > -1
+    if np.mean(value) == -1 and intent != "":
+        logger.warning(f"{intent} not found in this dataset. Available intents: {all_intents}")
+
+        if return_string:
+            science_spws = ""
+        else:
+            science_spws = []
+
+    else:
+        # If we don't have an intent, match on wildcards
+        if intent == "":
+            intent = "*"
+
+        # Get SPWs for intent, cast back to int
+        spws = msmd.spwsforintent(intent)
+        spws = [int(i) for i in spws]
+
+        # Get observatory name, if ALMA data then perform further filtering
+        observatory_name = get_observatory_name(vis)
+
+        if observatory_name.find("ALMA") >= 0 or observatory_name.find("OSF") >= 0:
+
+            logger.debug(
+                f"Calling almaspws with:\n  chavg={chavg}\n  tdm={tdm}\n  fdm={fdm}\n  sqld={sqld}"
+            )
+            alma_spws = msmd.almaspws(
+                chavg=chavg,
+                tdm=tdm,
+                fdm=fdm,
+                sqld=sqld,
+            )
+            alma_spws = [int(i) for i in alma_spws]
+            
+            if chavg and not sqld:
+                sqld_spws = msmd.almaspws(sqld=True)
+                sqld_spws = [int(i) for i in sqld_spws]
+
+                logger.debug(f"removing SQLD ({sqld_spws}) from list")
+                alma_spws = list(set(alma_spws) - set(sqld_spws))
+            if len(spws) == 0 or len(alma_spws) == 0:
+                science_spws = []
+            else:
+                science_spws = [int(i) for i in np.intersect1d(spws, alma_spws)]
+        else:
+            science_spws = spws
+
+        science_spws_dict = {}
+        for spw in science_spws:
+            science_spws_dict[spw] = sorted([msmd.chanfreqs(spw)[0], msmd.chanfreqs(spw)[-1]])
+
+        msmd.close()
+
+        if return_freq_ranges:
+            science_spws = science_spws_dict
+        if return_string:
+            science_spws = ",".join(str(i) for i in science_spws)
+        elif return_list_of_strings:
+            science_spws = list([str(i) for i in science_spws])
+        else:
+            science_spws = list(science_spws)
+
+    return science_spws
+
+def get_observatory_name(
+        vis: str,
+) -> str:
+    """Get observatory name for given measurement set.
+
+    Args:
+        vis (str): The path to the measurement set.
+
+    Returns:
+        str: The observatory name, if found; otherwise, an empty string.
+    """
+
+    tb = casaStuff.tbtool()
+    tb.open(f"{vis}/OBSERVATION")
+
+    try:
+        observatory_name = tb.getcell("TELESCOPE_NAME")
+    except RuntimeError:
+        observatory_name = ""
+
+    tb.close()
+
+    return observatory_name
+
+def clear_pointing_table(
+    vis: str,
+):
+    """Removes all rows from the POINTING table of a measurement set.
+
+    Args:
+        vis (str): Path to the measurement set.
+
+    Returns:
+        bool: True if the POINTING table was cleared successfully.
+    """
+
+    tb = casaStuff.tbtool()
+    tb.open(
+        f"{vis}/POINTING",
+        nomodify=False,
+    )
+    row_numbers = tb.rownumbers()
+    tb.removerows(row_numbers)
+    tb.close()
+
+    logger.info(f"Cleared the POINTING table for {vis}")
+
+    return True

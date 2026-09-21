@@ -8,7 +8,6 @@ directory.
 
 import logging
 
-import analysisUtils as au
 import numpy as np
 
 from . import casaMaskingRoutines as cma

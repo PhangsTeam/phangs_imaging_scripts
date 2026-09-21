@@ -6,11 +6,10 @@ import logging
 import os
 import re
 
-import analysisUtils as au
 import numpy as np
 
 from .casaStuff import imhead
-from .casaVisRoutines import estimate_mrs
+from .casaVisRoutines import estimate_mrs, estimate_synthesised_beam
 
 logger = logging.getLogger(__name__)
 
@@ -276,7 +275,7 @@ class CleanCall:
             logger.info("Estimating beam from visibilities")
             
             vis = self.get_param("vis")
-            beam = au.estimateSynthesizedBeam(vis)
+            beam = estimate_synthesised_beam(vis)
 
         return beam
 
