@@ -7,7 +7,6 @@ but also may be of general utility.
 import logging
 import os
 
-import analysisUtils as au
 import numpy as np
 import scipy.ndimage as nd
 from astropy.io import fits
@@ -45,7 +44,7 @@ def check_getchunk_putchunk_memory_issue(
 
     Args:
         infile: input image file.
-        myia: optional, if not given then we will run `myia = au.createCasaTool(casaStuff.iatool)` then `myia.open(infile)`.
+        myia: optional, if not given then we will run `myia = casaStuff.iatool()` then `myia.open(infile)`.
         return_data: if True then we will return the data if `getchunk()` runs properly withut a memory issue.
         return_mask: if True then we will return the mask if `getchunk(getmask=True)` runs properly withut a memory issue.
         return_shape: if True then we will return the shape of the cube data.
@@ -64,7 +63,7 @@ def check_getchunk_putchunk_memory_issue(
     cube_mask = None
     has_opened_file = False
     if myia is None:
-        myia = au.createCasaTool(casaStuff.iatool)
+        myia = casaStuff.iatool()
         myia.open(infile)
         has_opened_file = True
     if not myia.isopen():
@@ -177,14 +176,14 @@ def get_mask(infile, huge_cube_workaround=True):
     #    os.system('rm -rf ' + infile + '.temp.fits')
     #
     #else:
-    #    myia = au.createCasaTool(casaStuff.iatool)
+    #    myia = casaStuff.iatool()
     #    myia.open(infile+'.temp_deg')
     #    mask = myia.getchunk(getmask=True)
     #    myia.close()
     #
     #os.system('rm -rf ' + infile + '.temp_deg')
 
-    myia = au.createCasaTool(casaStuff.iatool)
+    myia = casaStuff.iatool()
 
     myia.open(infile)
 
@@ -237,7 +236,7 @@ def copy_mask(infile, outfile, huge_cube_workaround=True):
 
     # use putregion to update pixel mask
 
-    myia = au.createCasaTool(casaStuff.iatool)
+    myia = casaStuff.iatool()
 
     myia.open(outfile)
 
@@ -259,7 +258,7 @@ def copy_mask(infile, outfile, huge_cube_workaround=True):
     else: # getchunk was unsuccessful, has memory issue
         # putregion channel by channel
         logger.debug('putregion channel by channel for known memory issue')
-        myrg = au.createCasaTool(casaStuff.rgtool)
+        myrg = casaStuff.rgtool()
         nx = out_shape[0]
         ny = out_shape[1]
         #logger.debug('copy_mask mask.shape {}'.format(mask.shape))
@@ -324,13 +323,13 @@ def multiply_cube_by_value(infile, value, brightness_unit, huge_cube_workaround=
     #                         overwrite=True)
     #    os.system('rm -rf ' + infile + '.fits')
     #else:
-    #    myia = au.createCasaTool(casaStuff.iatool)
+    #    myia = casaStuff.iatool()
     #    myia.open(infile)
     #    vals = myia.getchunk()
     #    vals *= value
     #    myia.putchunk(vals)
 
-    myia = au.createCasaTool(casaStuff.iatool)
+    myia = casaStuff.iatool()
 
     myia.open(infile)
 
@@ -627,7 +626,7 @@ def trim_rind(
         target_file = infile
 
     # Figure out the extent of the image inside the cube
-    myia = au.createCasaTool(casaStuff.iatool)
+    myia = casaStuff.iatool()
     myia.open(target_file)
     mask = myia.getchunk(getmask=True)
     elt = nd.generate_binary_structure(2,1)
