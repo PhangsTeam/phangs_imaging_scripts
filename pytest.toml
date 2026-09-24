@@ -7,6 +7,7 @@ addopts = [
 ]
 markers = [
     "casa: marks tests as requiring CASA install (deselect with '-m \"not casa\"')",
+    "pipeline: marks tests as requiring the ALMA SD pipeline/plotms install, a superset of casa (deselect with '-m \"not pipeline\"')",
 ]
 testpaths = [
     "tests",

@@ -2,7 +2,6 @@
 import casashell
 import casatasks
 import casatools
-import casaplotms
 from almahelpers_localcopy import tsysspwmap
 from casatasks import (
     casalog,
@@ -51,10 +50,22 @@ from casatools import (
     quanta,
 )
 
+# plotms is only needed within the ALMA SD pipeline
+try:
+    import casaplotms
+    plotms = casaplotms.plotms
+
+except (ImportError, ModuleNotFoundError):
+    plotms = None
+    print("Could not import casaplotms")
+
 try:
     import casaviewer
+    viewer = casaviewer.imview
+
 except (ImportError, ModuleNotFoundError):
     casaviewer = None
+    viewer = None
     print("Could not import casaviewer")
 
 # TODO: Move back to CASA task
@@ -79,7 +90,3 @@ msmdtool = msmetadata
 tbtool = table
 metool = measures
 qatool = quanta
-
-plotms = casaplotms.plotms
-if casaviewer is not None:
-    viewer = casaviewer.imview
