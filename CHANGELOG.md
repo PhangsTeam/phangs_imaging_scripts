@@ -59,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed a wrong key name in the singledish pipeline (#384).
 - Fix crashes in suggest_extraction_scheme for cont extraction (#352).
 - Bugfix boolean operations (#391)
+- Pass imaging_method to task_align_for_mosaic for sdintimaging (#400).
 
 ### Dependencies
 - Bump actions/upload-artifact from 6 to 7 (#313).

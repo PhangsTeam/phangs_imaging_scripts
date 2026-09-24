@@ -1629,6 +1629,7 @@ if casa_enabled:
                 target=None,
                 product=None,
                 config=None,
+                imaging_method="tclean",
                 postprocessing_method="casa",
                 in_tags=None,
                 out_tags=None,
@@ -1690,11 +1691,13 @@ if casa_enabled:
                 this_part_dict_in = self._fname_dict(
                     target=this_part, config=config, product=product,
                     extra_ext=extra_ext_in,
+                    imaging_method=imaging_method,
                 )
 
                 this_part_dict_out = self._fname_dict(
                     target=this_part, config=config, product=product,
                     extra_ext=extra_ext_out,
+                    imaging_method=imaging_method,
                 )
 
                 for this_tag_in in in_tags:
@@ -2160,6 +2163,7 @@ if casa_enabled:
                 target=target,
                 product=product,
                 config=config,
+                imaging_method=imaging_method,
                 postprocessing_method=postprocessing_method,
                 in_tags=in_tag_list,
                 out_tags=out_tag_list,
