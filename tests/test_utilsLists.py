@@ -248,6 +248,16 @@ class TestMergePairs:
 
         merge_pairs(test_pairs)
 
+    def test_empty_list(self):
+        """Test passing an empty list"""
+
+        test_pairs = []
+        result = []
+
+        merged_pairs = merge_pairs(test_pairs)
+
+        assert merged_pairs == result
+
     def test_sorted_merge(self):
         """Test values are merged for an already sorted list"""
 

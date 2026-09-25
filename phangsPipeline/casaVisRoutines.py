@@ -530,7 +530,7 @@ def find_spws_for_line(
                 "Specify a line name or provide a rest frequency in GHz.")
             raise Exception("No rest frequency specified.")
         restfreq_ghz = (
-            lines.get_line_name_and_frequency(line, exit_on_error=True))[1]
+            lines.get_line_name_and_frequency(line))[1]
 
     # Work out the frequencies at the line edes.
 
@@ -827,7 +827,7 @@ def compute_common_chanwidth(
     # Get the line name and line center rest-frame frequency
     # in the line_list module for the input line
     line_name, restfreq_ghz = lines.get_line_name_and_frequency(
-        line, exit_on_error=True)
+        line)
 
     # Work out the frequencies at the line edes and central frequency
     line_low_ghz, line_high_ghz = lines.get_ghz_range_for_line(
@@ -1026,7 +1026,7 @@ def suggest_extraction_scheme(
                 "Specify a line name or provide a rest frequency in GHz.")
             raise Exception("No rest frequency specified.")
         restfreq_ghz = (
-            lines.get_line_name_and_frequency(line, exit_on_error=True))[1]
+            lines.get_line_name_and_frequency(line))[1]
 
     # # Work out the frequencies at the line edes.
     # line_low_ghz, line_high_ghz = lines.get_ghz_range_for_line(
@@ -1271,7 +1271,7 @@ def extract_line(
             raise Exception("No rest frequency specified.")
 
         restfreq_ghz = (
-            lines.get_line_name_and_frequency(line, exit_on_error=True))[1]
+            lines.get_line_name_and_frequency(line))[1]
 
     # Handle velocity windows, etc.
 
@@ -2087,7 +2087,7 @@ def extract_continuum(
         vlow_method = (vlow_kms is not None) and (vhigh_kms is not None)
         if vsys_method or vlow_method:
             ranges_to_exclude = lines.get_ghz_range_for_list(
-                line_list=lines_to_flag,
+                lines=lines_to_flag,
                 vsys_kms=vsys_kms, vwidth_kms=vwidth_kms,
                 vlow_kms=vlow_kms, vhigh_kms=vhigh_kms)
             spw_flagging_string = spw_string_for_freq_ranges(
