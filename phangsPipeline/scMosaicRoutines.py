@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 def build_common_header(
     infile_list: list | None = None,
-    allow_big_image: bool = False,
     too_big_pix: int | float = 1e4,
 ):
     """
@@ -30,8 +29,6 @@ def build_common_header(
 
     Args:
         infile_list (list): List of input image files.
-        allow_big_image (bool, optional): If True, allow big images to be created.
-            Defaults to False.
         too_big_pix (int|float, optional): The threshold for what constitutes a "big"
             image in pixels. Defaults to 1e4.
     Returns:
@@ -70,11 +67,9 @@ def build_common_header(
     optimal_2d_hdr["NAXIS1"] = shape2d[1]
     optimal_2d_hdr["NAXIS2"] = shape2d[0]
 
-    if allow_big_image:
-        if any(shape2d) > too_big_pix:
-            logger.warning(f"This is a very big image you plan to create: {shape2d}")
-            logger.warning("To make an image this big set allow_big_image to True. Returning.")
-            return None
+    # Log if we're making a very large mosaic
+    if any(shape2d) > too_big_pix:
+        logger.info(f"This is a very big image you plan to create: {shape2d}")
 
     # Put this 2D WCS into the 3D header
     target_hdr.update(optimal_2d_hdr)
@@ -276,8 +271,6 @@ def common_grid_for_mosaic(
     outfile_list: list | dict | None = None,
     template_name: str | None = None,
     target_hdr: fits.Header | None = None,
-    allow_big_image: bool = False,
-    too_big_pix: int | float = 1e4,
     overwrite: bool = False,
 ):
     """
@@ -294,10 +287,6 @@ def common_grid_for_mosaic(
             will define the final mosaic.
         target_hdr (fits.Header): User-provided header. Defaults to None,
             which will build an optimal header
-        allow_big_image (bool, optional): If True, allow big images to be created.
-            Defaults to False.
-        too_big_pix (int|float, optional): The threshold for what constitutes a "big"
-            image in pixels. Defaults to 1e4.
         overwrite (bool): Whether to overwrite existing images. Defaults to False.
 
     Returns:
@@ -349,8 +338,6 @@ def common_grid_for_mosaic(
 
         target_hdr = build_common_header(
             infile_list=infile_list,
-            allow_big_image=allow_big_image,
-            too_big_pix=too_big_pix,
         )
 
     if target_hdr is None:
