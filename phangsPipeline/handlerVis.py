@@ -627,7 +627,7 @@ if casa_enabled:
             # Translate these into frequency ranges
 
             ranges_to_exclude = lines.get_ghz_range_for_list(
-                line_list=lines_to_exclude, vsys_kms=vsys, vwidth_kms=vwidth)
+                lines=lines_to_exclude, vsys_kms=vsys, vwidth_kms=vwidth)
 
             # Check for manually defined frequency windows:
             manual_range_to_exclude = self._kh.get_contsub_excludefreqrange(product=product)
