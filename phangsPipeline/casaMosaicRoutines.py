@@ -337,7 +337,6 @@ def build_common_header(
         delta_dec = None,
         freq_ctr = None,
         delta_freq = None,
-        allow_big_image = False,
         too_big_pix=1e4,
 ):
     """
@@ -363,10 +362,6 @@ def build_common_header(
     is not supplied, it is calculated from the image stack.
 
     delta_dec : as delta_ra but for declination.
-
-    allow_big_image (default False) : allow very big images? If False
-    then the program throws an error if the image appears too
-    big. This is often the sign of a bug.
 
     too_big_pix (default 1e4) : definition of pixel scale (in one
     dimension) that marks an image as too big.
@@ -480,14 +475,10 @@ def build_common_header(
 
     # Check that the axis size isn't too big. This is likely to be a
     # bug. If allowbigimage is True then bypass this, otherwise exit.
-
-    if not allow_big_image:
-        if ra_axis_size > too_big_pix or \
-                dec_axis_size > too_big_pix:
-            logger.error("WARNING! This is a very big image you plan to create, "+str(ra_axis_size)+ \
-                             " x "+str(dec_axis_size))
-            logger.error(" To make an image this big set allowbigimage=True. Returning.")
-            return(None)
+    if ra_axis_size > too_big_pix or \
+            dec_axis_size > too_big_pix:
+        logger.info("This is a very big image you plan to create, "+str(ra_axis_size)+ \
+                         " x "+str(dec_axis_size))
 
     # Enter the new values into the header and return.
 
@@ -511,8 +502,6 @@ def common_grid_for_mosaic(
     dec_ctr = None,
     delta_ra = None,
     delta_dec = None,
-    allow_big_image = False,
-    too_big_pix=1e4,
     asvelocity=True,
     interpolation='cubic',
     axes=[-1],
@@ -536,7 +525,7 @@ def common_grid_for_mosaic(
     needs the same format returned by a call to imregrid with
     template='get'.
 
-    ra_ctr, dec_ctr, delta_ra, delta_dec, allow_big_image, too_big_pix
+    ra_ctr, dec_ctr, delta_ra, delta_dec
     : keywords passed to the header creation routine. See
     documentation for "build_common_header" to explain these.
 
@@ -596,8 +585,6 @@ def common_grid_for_mosaic(
             dec_ctr = dec_ctr,
             delta_ra = delta_ra,
             delta_dec = delta_dec,
-            allow_big_image = allow_big_image,
-            too_big_pix=too_big_pix,
             )
 
     if target_hdr is None:

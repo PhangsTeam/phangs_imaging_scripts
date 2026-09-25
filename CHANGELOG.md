@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated default values for setting automatic multiscales (#393).
 - Use spectral-cube common beam calculations for common beams (#385).
 - Mosaic weights are now generated after convolution and regridding, and will undo any primary beam corrections (#396).
+- Don't skip making large mosaics (but keep the log messages to inform users this is happening) (#405).
 
 ### Fixed
 

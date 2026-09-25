@@ -1753,8 +1753,6 @@ if casa_enabled:
                         dec_ctr=dec_ctr,
                         delta_ra=delta_ra,
                         delta_dec=delta_dec,
-                        allow_big_image=False,
-                        too_big_pix=1e4,
                         asvelocity=True,
                         interpolation='cubic',
                         axes=[-1],
@@ -1769,8 +1767,6 @@ if casa_enabled:
                         infile_list=infile_list,
                         outfile_list=outfile_list,
                         template_name=template_name,
-                        allow_big_image=False,
-                        too_big_pix=1e4,
                         overwrite=True,
                     )
                 else:
