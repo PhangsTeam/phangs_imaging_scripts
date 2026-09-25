@@ -6,7 +6,6 @@ mask manipulation steps in CASA.
 import logging
 import os
 
-import analysisUtils as au
 import numpy as np
 import scipy.ndimage as ndimage
 from astropy.io import fits
@@ -162,7 +161,7 @@ def noise_for_cube(
             logger.error('maskfile specified but not found - ' + maskfile)
             return (None)
 
-    myia = au.createCasaTool(casaStuff.iatool)
+    myia = casaStuff.iatool()
     myia.open(infile)
 
     has_memory_issue, cube_shape = ccr.check_getchunk_putchunk_memory_issue(
@@ -191,7 +190,7 @@ def noise_for_cube(
 
         myia_mask = None
         if maskfile is not None:
-            myia_mask = au.createCasaTool(casaStuff.iatool)
+            myia_mask = casaStuff.iatool()
             myia_mask.open(maskfile)
 
         per_channel_noise = []
@@ -303,7 +302,7 @@ def read_cube(infile, huge_cube_workaround=True):
         # Remove intermediate fits file
         os.system('rm -rf ' + infile + '.fits')
     else:
-        myia = au.createCasaTool(casaStuff.iatool)
+        myia = casaStuff.iatool()
         myia.open(infile)
         cube = myia.getchunk()
         myia.close()
@@ -344,7 +343,7 @@ def write_mask(infile, outfile, mask, huge_cube_workaround=True):
         # Remove the intermediate fits file
         os.system('rm -rf ' + outfile + '.fits')
     else:
-        myia = au.createCasaTool(casaStuff.iatool)
+        myia = casaStuff.iatool()
         myia.open(outfile)
         myia.putchunk(mask)
         myia.close()
@@ -478,7 +477,7 @@ def apply_additional_mask(
     beam based masks by setting the PB file to new_mask_file and the
     pb_limit as new_thresh.
     """
-    myia = au.createCasaTool(casaStuff.iatool)
+    myia = casaStuff.iatool()
     myia.open(new_mask_file)
     new_mask = myia.getchunk()
     myia.close()
@@ -515,8 +514,8 @@ def import_and_align_mask(
                          overwrite=True)
 
     # Prepare analysis utility tool
-    myia = au.createCasaTool(casaStuff.iatool)
-    myim = au.createCasaTool(casaStuff.imtool)
+    myia = casaStuff.iatool()
+    myim = casaStuff.imtool()
 
     # Read mask data
     # myia.open(out_file+'.temp_copy')

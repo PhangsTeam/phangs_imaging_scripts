@@ -7,7 +7,6 @@ import copy
 import logging
 import os
 
-import analysisUtils as au
 import numpy as np
 
 from . import casaMaskingRoutines as cma
@@ -773,7 +772,7 @@ def generate_weight_file(
     # Copy the template and open it
     os.system("cp -r "+template+" "+outfile)
 
-    myia = au.createCasaTool(casaStuff.iatool)
+    myia = casaStuff.iatool()
     myia.open(outfile)
 
     # Check for memory issues
@@ -1017,7 +1016,7 @@ def mosaic_aligned_data(
 
     # We might need to add a 4th (Stokes) axis
     # to prevent crashing
-    myia = au.createCasaTool(casaStuff.iatool)
+    myia = casaStuff.iatool()
 
     for this_infile in infile_list:
 
@@ -1155,8 +1154,8 @@ def mosaic_aligned_data(
         os.system("cp -r "+local_imlist[0]+" "+sum_file)
         os.system("cp -r "+local_imlist[0]+" "+weight_file)
         
-        myia_sum = au.createCasaTool(casaStuff.iatool)
-        myia_weight = au.createCasaTool(casaStuff.iatool)
+        myia_sum = casaStuff.iatool()
+        myia_weight = casaStuff.iatool()
         myia_sum.open(sum_file)
         myia_weight.open(weight_file)
         
@@ -1184,7 +1183,7 @@ def mosaic_aligned_data(
                     casaStuff.immath(imagename=temp_chan_images, mode='evalexpr', 
                                     expr=lel_exp_sum, outfile=temp_sum)
                     
-                    myia_temp = au.createCasaTool(casaStuff.iatool)
+                    myia_temp = casaStuff.iatool()
                     myia_temp.open(temp_sum)
                     sum_slice = myia_temp.getchunk()
                     myia_temp.close()
@@ -1250,7 +1249,7 @@ def mosaic_aligned_data(
                         casaStuff.immath(imagename=temp_chan_images, mode='evalexpr',
                                         expr=lel_exp_sum, outfile=temp_sum)
                         
-                        myia_temp = au.createCasaTool(casaStuff.iatool)
+                        myia_temp = casaStuff.iatool()
                         myia_temp.open(temp_sum)
                         sum_slice = myia_temp.getchunk()
                         myia_temp.close()
@@ -1280,7 +1279,7 @@ def mosaic_aligned_data(
 
     # Just to be safe, reset the masks on the two images.
 
-    myia = au.createCasaTool(casaStuff.iatool)
+    myia = casaStuff.iatool()
     myia.open(sum_file)
     myia.set(pixelmask=1)
     myia.close()
@@ -1311,8 +1310,8 @@ def mosaic_aligned_data(
         os.system("cp -r "+sum_file+" "+temp_file)
         os.system("cp -r "+weight_file+" "+local_maskfile)
         
-        myia_temp = au.createCasaTool(casaStuff.iatool)
-        myia_mask = au.createCasaTool(casaStuff.iatool)
+        myia_temp = casaStuff.iatool()
+        myia_mask = casaStuff.iatool()
         myia_temp.open(temp_file)
         myia_mask.open(local_maskfile)
 
@@ -1381,7 +1380,7 @@ def mosaic_aligned_data(
             myia_mask.close()
 
     # Add in potential Stokes axis to the mask file
-    myia = au.createCasaTool(casaStuff.iatool)
+    myia = casaStuff.iatool()
     myia.open(local_maskfile)
     in_shape = myia.shape()
     if len(in_shape) != 4:

@@ -57,9 +57,6 @@ else:
 
 if casa_enabled:
 
-    # Analysis utilities
-    import analysisUtils as au
-
     from .clean_call import CleanCall, CleanCallFunctionDecorator
 
     from . import casaImagingRoutines as imr

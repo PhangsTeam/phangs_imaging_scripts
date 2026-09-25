@@ -29,8 +29,6 @@ else:
 
 if casa_enabled:
 
-    import analysisUtils as au
-
     from . import casaImagingRoutines as imr
     from . import casaMaskingRoutines as msr
     from . import casaStuff
@@ -539,7 +537,7 @@ if casa_enabled:
         #     chunks_iter = self.return_valid_chunks(chunk_num=chunk_num)
 
         #     # TODO: move to helper function.
-        #     mytb = au.createCasaTool(casaStuff.tbtool)
+        #     mytb = casaStuff.tbtool()
         #     mytb.open(self.full_vis_file, nomodify = True)
         #     colnames = mytb.colnames()
         #     if 'CORRECTED_DATA' in colnames:
@@ -590,8 +588,8 @@ if casa_enabled:
 
             chunks_iter = self.return_valid_chunks(chunk_num=chunk_num)
 
-            myia = au.createCasaTool(casaStuff.iatool)
-            myrg = au.createCasaTool(casaStuff.rgtool)
+            myia = casaStuff.iatool()
+            myrg = casaStuff.rgtool()
 
             myia.open(imagename)
 
