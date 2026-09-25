@@ -137,6 +137,10 @@ def merge_pairs(
     # Sort on the x coordinate
     pairs = sorted(pairs)
 
+    # If the list is empty, return an empty list
+    if len(pairs) == 0:
+        return []
+
     # Start the list of new pairs
     new_pairs = [tuple(pairs[0])]
     i = 1
