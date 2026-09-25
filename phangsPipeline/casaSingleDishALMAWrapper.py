@@ -6,6 +6,7 @@ import tarfile
 
 import astropy.units as u
 import numpy as np
+from astropy.io import fits
 from astropy.table import Table
 
 from . import casaLegacySingleDishRoutines as csdr
@@ -407,10 +408,14 @@ def runALMAPipeline(path_galaxy,
         weightimage_fits = f"{weightimage}.fits"
         casaStuff.exportfits(imagename=weightimage, fitsimage=weightimage_fits, overwrite=True)
 
+        # Move the image
         shutil.copy2(imagefile_fits, output_file)
-        # And export the weightfile
+        
+        # Square the weight so this can be properly used in mosaicking later
         weight_output_file = output_file.replace(".fits", '_weight.fits')
-        shutil.copy2(weightimage_fits, weight_output_file)
+        with fits.open(weightimage_fits) as hdu:
+            hdu[0].data = hdu[0].data ** 2
+            hdu.writeto(weight_output_file, overwrite=True)
 
         logger.info(f"> Copied image to {output_file}")
         logger.info(f"> Copied weight to {weight_output_file}")
