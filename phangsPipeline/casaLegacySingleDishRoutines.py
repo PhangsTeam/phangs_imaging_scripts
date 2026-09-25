@@ -49,6 +49,7 @@ import analysisUtils as au
 import numpy as np
 
 from . import casaStuff
+from .casaVisRoutines import get_science_spws
 from .utilsSingleDish import (
     getTPSampling,
     get_first_arr_val,
@@ -282,7 +283,7 @@ def read_spw(filename,source):
     names          = mytb.getcol('NAME')
     rest_freq_scie = [rest_freq_scie[i] for i in range(len(spws_scie)) if "FULL_RES" in names[spws_scie[i]]]
     spws_scie      = [spw for spw in spws_scie if "FULL_RES" in names[spw]]
-    spws_scie      = au.getScienceSpws(filename)
+    spws_scie      = get_science_spws(filename)
     spws_scie      = spws_scie.split(",")
     spws_scie = [int(i) for i in spws_scie]
 
