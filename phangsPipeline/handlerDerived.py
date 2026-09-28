@@ -77,6 +77,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
             do_shuffling: bool = False,
             do_flatmask: bool = False,
             do_flatmaps: bool = False,
+            extra_ext: str = '',
             convolve_method: str = "convolve_fft",
             make_directories: bool = True,
             overwrite: bool = True,
@@ -110,6 +111,9 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                 generate flat masks. Defaults to False.
             do_flatmaps (bool, optional): If True, will
                 generate flat maps. Defaults to False.
+            extra_ext (str, optional): Optional filename suffix (for
+                example "_prior_co21") to keep products from different
+                derivation contexts separate. Defaults to ''.
             convolve_method (str, optional): Convolution method. Should be
                     one of 'convolve', 'convolve_fft', 'convolve_uv'.
                     Defaults to 'convolve_fft'.
@@ -160,6 +164,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                     target=this_target, 
                     config=this_config, 
                     product=this_product,
+                    extra_ext_out=extra_ext,
                     convolve_method=convolve_method,
                     just_copy=True, 
                     overwrite=overwrite,
@@ -181,6 +186,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                         res_tag=this_res_tag,
                         res_value=this_res_value,
                         res_type="ang",
+                        extra_ext_out=extra_ext,
                         convolve_method=convolve_method,
                         overwrite=overwrite,
                     )
@@ -199,6 +205,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                         res_tag=this_res_tag,
                         res_value=this_res_value,
                         res_type="phys",
+                        extra_ext_out=extra_ext,
                         convolve_method=convolve_method,
                         overwrite=overwrite,
                     )
@@ -214,7 +221,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
                 self.task_estimate_noise(
                     target=this_target, config=this_config, product=this_product,
-                    overwrite=overwrite)
+                    extra_ext=extra_ext, overwrite=overwrite)
 
                 # Loop over all angular and physical resolutions.
 
@@ -226,7 +233,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                 for this_res_tag in res_list:
                     self.task_estimate_noise(
                         target=this_target, config=this_config, product=this_product,
-                        res_tag=this_res_tag, overwrite=overwrite)
+                        res_tag=this_res_tag, extra_ext=extra_ext, overwrite=overwrite)
 
                 res_dict = self._kh.get_phys_res_dict(
                     config=this_config, product=this_product)
@@ -236,7 +243,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                 for this_res_tag in res_list:
                     self.task_estimate_noise(
                         target=this_target, config=this_config, product=this_product,
-                        res_tag=this_res_tag, overwrite=overwrite)
+                        res_tag=this_res_tag, extra_ext=extra_ext, overwrite=overwrite)
 
         # Make "strict" signal masks for each cube
 
@@ -249,7 +256,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
                 self.task_build_strict_mask(
                     target=this_target, config=this_config, product=this_product,
-                    overwrite=overwrite, res_tag=None)
+                    overwrite=overwrite, res_tag=None, extra_ext=extra_ext)
 
                 # Loop over all angular and physical resolutions.
 
@@ -257,13 +264,13 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                         config=this_config, product=this_product):
                     self.task_build_strict_mask(
                         target=this_target, config=this_config, product=this_product,
-                        overwrite=overwrite, res_tag=this_res)
+                        overwrite=overwrite, res_tag=this_res, extra_ext=extra_ext)
 
                 for this_res in self._kh.get_phys_res_dict(
                         config=this_config, product=this_product):
                     self.task_build_strict_mask(
                         target=this_target, config=this_config, product=this_product,
-                        overwrite=overwrite, res_tag=this_res)
+                        overwrite=overwrite, res_tag=this_res, extra_ext=extra_ext)
 
         # Make "broad" combination masks.
 
@@ -275,7 +282,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
                 self.task_build_broad_mask(
                     target=this_target, config=this_config, product=this_product,
-                    overwrite=overwrite, res_tag=None)
+                    overwrite=overwrite, res_tag=None, extra_ext=extra_ext)
 
         # Make "moments" - derived data products.
 
@@ -288,7 +295,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
                 self.task_generate_moments(
                     target=this_target, product=this_product, config=this_config,
-                    res_tag=None, overwrite=overwrite)
+                    res_tag=None, extra_ext=extra_ext, overwrite=overwrite)
 
                 # Loop over all angular and physical resolutions.
 
@@ -296,13 +303,13 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                         config=this_config, product=this_product):
                     self.task_generate_moments(
                         target=this_target, product=this_product, config=this_config,
-                        res_tag=this_res, overwrite=overwrite)
+                        res_tag=this_res, extra_ext=extra_ext, overwrite=overwrite)
 
                 for this_res in self._kh.get_phys_res_dict(
                         config=this_config, product=this_product):
                     self.task_generate_moments(
                         target=this_target, product=this_product, config=this_config,
-                        res_tag=this_res, overwrite=overwrite)
+                        res_tag=this_res, extra_ext=extra_ext, overwrite=overwrite)
 
         if do_secondary:
             for this_target, this_product, this_config in \
@@ -312,19 +319,19 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
                 self.task_generate_secondary_moments(
                     target=this_target, product=this_product, config=this_config,
-                    res_tag=None, overwrite=overwrite)
+                    res_tag=None, extra_ext=extra_ext, overwrite=overwrite)
 
                 for this_res in self._kh.get_ang_res_dict(
                         config=this_config, product=this_product):
                     self.task_generate_secondary_moments(
                         target=this_target, product=this_product, config=this_config,
-                        res_tag=this_res, overwrite=overwrite)
+                        res_tag=this_res, extra_ext=extra_ext, overwrite=overwrite)
 
                 for this_res in self._kh.get_phys_res_dict(
                         config=this_config, product=this_product):
                     self.task_generate_secondary_moments(
                         target=this_target, product=this_product, config=this_config,
-                        res_tag=this_res, overwrite=overwrite)
+                        res_tag=this_res, extra_ext=extra_ext, overwrite=overwrite)
 
         # Create velocity field.
 
@@ -336,7 +343,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
                 self.task_build_vfield(
                     target=this_target, config=this_config, product=this_product,
-                    overwrite=overwrite, res_tag=None)
+                    overwrite=overwrite, res_tag=None, extra_ext=extra_ext)
 
         # Make shuffled cube.
 
@@ -348,7 +355,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
                 self.task_shuffle_cube(
                     target=this_target, config=this_config, product=this_product,
-                    overwrite=overwrite)
+                    extra_ext=extra_ext, overwrite=overwrite)
 
                 # Loop over all angular and physical resolutions.
                 # N.B. we only want native resolution shuffled cubes;
@@ -390,7 +397,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
                 self.task_build_flat_strict_mask(
                     target=this_target, config=this_config, product=this_product,
-                    overwrite=overwrite, res_tag=None)
+                    overwrite=overwrite, res_tag=None, extra_ext=extra_ext)
 
                 # Loop over all angular and physical resolutions.
 
@@ -398,13 +405,13 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                         config=this_config, product=this_product):
                     self.task_build_flat_strict_mask(
                         target=this_target, config=this_config, product=this_product,
-                        overwrite=overwrite, res_tag=this_res)
+                        overwrite=overwrite, res_tag=this_res, extra_ext=extra_ext)
 
                 for this_res in self._kh.get_phys_res_dict(
                         config=this_config, product=this_product):
                     self.task_build_flat_strict_mask(
                         target=this_target, config=this_config, product=this_product,
-                        overwrite=overwrite, res_tag=this_res)
+                        overwrite=overwrite, res_tag=this_res, extra_ext=extra_ext)
 
                 #
                 # Flat Broad Mask
@@ -413,7 +420,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
                 self.task_build_flat_broad_mask(
                     target=this_target, config=this_config, product=this_product,
-                    overwrite=overwrite, res_tag=None)
+                    overwrite=overwrite, res_tag=None, extra_ext=extra_ext)
 
                 # Loop over all angular and physical resolutions.
 
@@ -421,13 +428,13 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                         config=this_config, product=this_product):
                     self.task_build_flat_broad_mask(
                         target=this_target, config=this_config, product=this_product,
-                        overwrite=overwrite, res_tag=this_res)
+                        overwrite=overwrite, res_tag=this_res, extra_ext=extra_ext)
 
                 for this_res in self._kh.get_phys_res_dict(
                         config=this_config, product=this_product):
                     self.task_build_flat_broad_mask(
                         target=this_target, config=this_config, product=this_product,
-                        overwrite=overwrite, res_tag=this_res)
+                        overwrite=overwrite, res_tag=this_res, extra_ext=extra_ext)
 
         # Make "flat maps" - derived data products.
 
@@ -440,7 +447,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
                 self.task_generate_flatmaps(
                     target=this_target, product=this_product, config=this_config,
-                    res_tag=None, overwrite=overwrite)
+                    res_tag=None, extra_ext=extra_ext, overwrite=overwrite)
 
                 # Loop over all angular and physical resolutions.
 
@@ -448,13 +455,13 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                         config=this_config, product=this_product):
                     self.task_generate_flatmaps(
                         target=this_target, product=this_product, config=this_config,
-                        res_tag=this_res, overwrite=overwrite)
+                        res_tag=this_res, extra_ext=extra_ext, overwrite=overwrite)
 
                 for this_res in self._kh.get_phys_res_dict(
                         config=this_config, product=this_product):
                     self.task_generate_flatmaps(
                         target=this_target, product=this_product, config=this_config,
-                        res_tag=this_res, overwrite=overwrite)
+                        res_tag=this_res, extra_ext=extra_ext, overwrite=overwrite)
 
     # end of loop
 
@@ -1109,11 +1116,14 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
         fname_dict_nores = self._fname_dict(
             target=target, config=config, product=product, res_tag=None,
-            extra_ext_in=extra_ext)
+            extra_ext_out=extra_ext)
 
         fname_dict = self._fname_dict(
             target=target, config=config, product=product, res_tag=res_tag,
-            extra_ext_in=extra_ext)
+            extra_ext_out=extra_ext)
+
+        fname_dict_inputs = self._fname_dict(
+            target=target, config=config, product=product, res_tag=res_tag)
 
         # ... broad mask never has a resolution tag
 
@@ -1121,9 +1131,9 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
         # ... files with resolution tag
 
-        input_file = fname_dict['cube']
-        noise_file = fname_dict['noise']
-        strictmask_file = fname_dict['strictmask']
+        input_file = fname_dict_inputs['cube']
+        noise_file = fname_dict_inputs['noise']
+        strictmask_file = fname_dict_inputs['strictmask']
 
         outroot = fname_dict['momentroot']
 
@@ -1270,11 +1280,14 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
         fname_dict_nores = self._fname_dict(
             target=target, config=config, product=product, res_tag=None,
-            extra_ext_in=extra_ext)
+            extra_ext_out=extra_ext)
 
         fname_dict = self._fname_dict(
             target=target, config=config, product=product, res_tag=res_tag,
-            extra_ext_in=extra_ext)
+            extra_ext_out=extra_ext)
+
+        fname_dict_inputs = self._fname_dict(
+            target=target, config=config, product=product, res_tag=res_tag)
 
         # ... broad mask never has a resolution tag
 
@@ -1282,9 +1295,9 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
         # ... files with resolution tag
 
-        input_file = fname_dict['cube']
-        noise_file = fname_dict['noise']
-        strictmask_file = fname_dict['strictmask']
+        input_file = fname_dict_inputs['cube']
+        noise_file = fname_dict_inputs['noise']
+        strictmask_file = fname_dict_inputs['strictmask']
 
         outroot = fname_dict['momentroot']
 
