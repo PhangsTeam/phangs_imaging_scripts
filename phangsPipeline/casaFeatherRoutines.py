@@ -87,6 +87,8 @@ def prep_sd_for_feather(
                 fitsimage=current_infile,
                 imagename=current_outfile,
                 zeroblanks=False,
+                defaultaxes=True,
+                defaultaxesvalues=['', '', '', 'I'],
                 overwrite=overwrite)
             current_infile = current_outfile
 
