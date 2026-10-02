@@ -65,6 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pass imaging_method to task_align_for_mosaic for sdintimaging (#400).
 - Appropriately change spectral units from velocity to frequency when regridding (#398).
 - Ensure fits import adds Stokes axis in feather routines (#407).
+- Fixed regression in get_ghz_range_for_line (#409).
 
 ### Dependencies
 - Bump actions/upload-artifact from 6 to 7 (#313).
