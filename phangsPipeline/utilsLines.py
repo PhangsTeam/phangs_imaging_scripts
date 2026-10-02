@@ -411,7 +411,7 @@ def is_line_family(
 
 
 def get_ghz_range_for_line(
-    line: str,
+    line: str | None = None,
     restfreq_ghz: float | None = None,
     vsys_kms: float | None = None,
     vwidth_kms: float | None = None,
@@ -438,6 +438,20 @@ def get_ghz_range_for_line(
     Returns:
         tuple[float, float]: A tuple containing the low and high frequencies in GHz
     """
+    
+    if line is None and restfreq_ghz is None:
+        raise ValueError("Either line or restfreq_ghz must be specified.")
+    
+    if line is not None and restfreq_ghz is not None:
+        logger.warning(
+            "Both line and restfreq_ghz specified. Using restfreq_ghz and ignoring line."
+        )
+
+    # If we haven't got a rest frequency, get it from the line list
+    if line is not None and restfreq_ghz is None:
+        _, restfreq_ghz = get_line_name_and_frequency(line)
+
+    restfreq_ghz = restfreq_ghz * u.GHz
 
     # Physical constants
     sol_kms = const.c.to(u.km / u.s)
@@ -456,12 +470,6 @@ def get_ghz_range_for_line(
             logger.warning("Both vsys+vwidth and vlow+vhigh specified. Using vlow+vhigh method.")
     else:
         use_vsys = True
-
-    # If we haven't got a rest frequency, get it from the line list
-    if restfreq_ghz is None:
-        _, restfreq_ghz = get_line_name_and_frequency(line)
-
-    restfreq_ghz = restfreq_ghz * u.GHz
 
     if use_vsys:
         vlow_kms = vsys_kms - vwidth_kms / 2.0
