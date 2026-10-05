@@ -223,6 +223,12 @@ class TestUtilsLines:
 
         utilsLines.get_ghz_range_for_line(line=line)
 
+    @pytest.mark.xfail(raises=ValueError, reason="No information provided")
+    def test_get_ghz_range_for_line_no_line_no_rest_freq(self):
+        """Test that get_ghz_range_for_line fails when no line or rest frequency is provided"""
+
+        utilsLines.get_ghz_range_for_line()
+
     def test_get_ghz_range_for_list_of_lines(self):
         """Test that get_ghz_range_for_line returns the correct frequency range for a list of lines"""
 
