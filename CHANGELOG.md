@@ -66,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Appropriately change spectral units from velocity to frequency when regridding (#398).
 - Ensure fits import adds Stokes axis in feather routines (#407).
 - Fixed regression in get_ghz_range_for_line (#409).
+- Remove obsolete keywords so legacy singledish pipeline works again (#410).
 
 ### Dependencies
 - Bump actions/upload-artifact from 6 to 7 (#313).

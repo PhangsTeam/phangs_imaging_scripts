@@ -240,7 +240,7 @@ if casa_enabled:
 
             for ird in input_raw_data:
 
-                ms_dir = str(os.path.basename(ird))
+                ms_dir = str(os.path.basename(os.path.normpath(ird)))
                 ms_dirs.append(ms_dir)
 
                 path_galaxy = os.path.join(str(os.path.abspath(path_galaxy_root)), ms_dir) + os.sep
@@ -266,28 +266,28 @@ if casa_enabled:
 
                 product = product_list[0]
 
-                vlow2 = product_dict[product]['vel_cube'][0]
-                vhigh2 = product_dict[product]['vel_cube'][1]
+                vlow1 = product_dict[product]['vel_cube'][0]
+                vhigh1 = product_dict[product]['vel_cube'][1]
 
-                vlow1 = product_dict[product]['vel_line_mask'][0]
-                vhigh1 = product_dict[product]['vel_line_mask'][1]
+                vlow2 = product_dict[product]['vel_line_mask'][0]
+                vhigh2 = product_dict[product]['vel_line_mask'][1]
 
                 kwargs = {}
                 kwargs['path_galaxy'] = path_galaxy_root                       #
                 kwargs['ms_dirs'] = ms_dirs
                 kwargs['flag_file']  = ''                                      #
-                kwargs['doplots']    = False                                    # Do non-interactive. additional plots (plots will be saved in "calibration/plots" folder)
+                kwargs['doplots']    = False                                   # Do non-interactive. additional plots (plots will be saved in "calibration/plots" folder)
                 kwargs['bl_order']   = 1                                       # Order for the baseline fitting
                 kwargs['max_flag_frac'] = 0.9                                  # Remove antennae with significant amounts of flagged data
-                kwargs['in_source']     = source                               # Source name. This comes from the field name in the MS file keys
-                kwargs['freq_rest']  = product_dict[product]['freq_rest_MHz']                           # Rest frequency of requested line in MHz (ex: "freq_rest  = 230538" for CO(2-1))
-                kwargs['vel_cube']   = vel_cube = '%.3f~%.3f'%(vlow2, vhigh2)  # Range in velocity in km/s to extract the line cube.
-                kwargs['vel_line']   = vel_line = '%.3f~%.3f'%(vlow1, vhigh1)  # Range in velocity in km/s to exclude the line emission from the baseline fit.
+                kwargs['in_sources']    = source                               # Source name. This comes from the field name in the MS file keys
+                kwargs['freq_rest']  = product_dict[product]['freq_rest_MHz']  # Rest frequency of requested line in MHz (ex: "freq_rest  = 230538" for CO(2-1))
+                kwargs['vel_cube']   = '%.3f~%.3f'%(vlow2, vhigh2)             # Range in velocity in km/s to extract the line cube.
+                kwargs['vel_line']   = '%.3f~%.3f'%(vlow1, vhigh1)             # Range in velocity in km/s to exclude the line emission from the baseline fit.
                 kwargs['phase_center']   = phase_center                        # Provide coordinate of phase center, otherwise set to "False" and coordinates will be read from the data
                 kwargs['source_vel_kms'] = product_dict[product]['vsys']                                # Provide velocity of the source, otherwise set to "False" and coordinates will be read from the data
                 kwargs['vwidth_kms']     = product_dict[product]['vwidth']                              # width in velocity and velocity resolution in km/s
                 kwargs['chan_dv_kms']    = product_dict[product]['max_chanwidth_kms']                   #
-                kwargs['freq_rest_im']   = product_dict[product]['freq_rest_GHz']                       # rest frequency in GHz for imaging
+                kwargs['freq_rest_im']   = product_dict[product]['freq_rest_MHz'] / 1e3                 # rest frequency in GHz for imaging
                 kwargs['name_line']      = product_dict[product]['line_name']                           # Name of the line, to be used for naming the files -- will not be used anymore
                 kwargs['output_file']    = product_dict[product]['output_file']                         # Output file path
                 #kwargs['joint_imaging_dirs'] = joint_imaging_dirs              # Do a joint imaging by including *.cal.jy in joint_imaging_dir
@@ -351,17 +351,11 @@ if casa_enabled:
                 logger.warning('Warning! Multiple single dish raw data entries are found in the ms_file_key! We will only process the first one! [TODO]')
                 #<TODO># We can only process one single dish raw data for now. Not sure how to combine those. Unless we specify line_product in the ms_file_key?
 
-            for idx in range(len(fname_dict['sd_raw_data_list'])):
-                self.task_execute_single_dish_pipeline(
-                    target = target,
-                    product = product,
-                    source = fname_dict['source'],
-                    input_raw_data = fname_dict['sd_raw_data_list'][idx],
-                    output_file = fname_dict['sd_file'],
-                    )
-                if idx > 0:
-                    break
-                    #<TODO># We can only process one single dish raw data for now. Not sure how to combine those. Unless we specify line_product in the ms_file_key?
+            self.task_execute_single_dish_pipeline(
+                target = target,
+                product = product,
+                source = fname_dict['source'],
+                )
 
             return
 
