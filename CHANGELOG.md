@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved convolution with spectral-cube, including new analytic support for small kernels (#385).
 - Add tests for utilsLines, and tidy up formatting (#403).
 - Add optional file string in derived for nonstandard workflows (#406).
+- Use SD pipeline weights in single-dish linear mosaicking (#397).
 
 ### Changed
 
