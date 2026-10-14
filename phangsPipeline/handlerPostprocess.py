@@ -1202,12 +1202,17 @@ if casa_enabled:
                 out_pb_tag='pb_trimmed',
                 extra_ext_in='',
                 extra_ext_out='',
-                check_files=True
+                check_files=True,
+                min_pixperbeam: int = 3,
         ):
             """
             For one target, product, config combination, compress the cube
             to the smallest reasonable volume. Also align the primary beam
             file out onto this grid.
+
+            Args:
+                min_pixperbeam (int, optional): Minimum number of pixels per beam to keep when
+                    rebinning the cube. Defaults to 3.
             """
 
             if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
@@ -1256,7 +1261,7 @@ if casa_enabled:
                         outfile=outdir + outfile,
                         overwrite=True,
                         inplace=False,
-                        min_pixperbeam=3,
+                        min_pixperbeam=min_pixperbeam,
                         pad=1,
                     )
                 elif postprocessing_method == "spectralcube":
@@ -1264,7 +1269,7 @@ if casa_enabled:
                         infile=f"{indir}{infile}.fits",
                         outfile=f"{outdir}{outfile}.fits",
                         overwrite=True,
-                        min_pixperbeam=3,
+                        min_pixperbeam=min_pixperbeam,
                         pad=1,
                     )
                 else:
@@ -2256,11 +2261,16 @@ if casa_enabled:
                 check_files=True,
                 ext_ext='',
                 postprocessing_method="casa",
+                min_pixperbeam: int = 3,
         ):
             """
             Recipe that cleans up the output for one target, converting to
             Kelvin, compressing and trimming the cube and then exporting
             as a FITS file.
+
+            Args:
+                min_pixperbeam (int, optional): Minimum number of pixels per beam to keep when
+                    rebinning during compression. Defaults to 3.
             """
 
             if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
@@ -2276,6 +2286,7 @@ if casa_enabled:
                 do_trimrind=True,
                 extra_ext_in=ext_ext,
                 extra_ext_out=ext_ext,
+                min_pixperbeam=min_pixperbeam,
             )
 
             self.task_convert_units(
@@ -2321,6 +2332,7 @@ if casa_enabled:
                 feather_noapod: bool = False,
                 feather_before_mosaic: bool = False,
                 make_directories: bool = True,
+                min_pixperbeam: int = 3,
         ):
             """
             Loops over the full set of targets, products, and
@@ -2350,6 +2362,8 @@ if casa_enabled:
                     Defaults to False.
                 make_directories (bool, optional): If True, will make directories that don't already exist.
                     Defaults to True.
+                min_pixperbeam (int, optional): Minimum number of pixels per beam to keep when
+                    rebinning during the cleanup (compression) step. Defaults to 3.
             """
 
             if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
@@ -2628,6 +2642,7 @@ if casa_enabled:
                         config=this_config,
                         check_files=True,
                         postprocessing_method=postprocessing_method,
+                        min_pixperbeam=min_pixperbeam,
                     )
 
             # Build reports summarizing the properties of the final
