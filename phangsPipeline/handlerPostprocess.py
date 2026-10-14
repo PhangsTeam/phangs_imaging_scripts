@@ -186,7 +186,7 @@ if casa_enabled:
                     target=target,
                     product=product,
                 )
-                fname_dict[tag] = orig_weight_sd_file.replace(".fits", "_weight.fits")
+                fname_dict[tag] = orig_weight_sd_file.replace(".fits", "_weightsq.fits")
             else:
                 fname_dict[tag] = ""
 
