@@ -78,3 +78,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump `actions/setup-python` from 6 to 7 ([#367](https://github.com/PhangsTeam/phangs_imaging_scripts/pull/367))
 - Bump `tarides/changelog-check-action` from 3 to 4 ([#368](https://github.com/PhangsTeam/phangs_imaging_scripts/pull/368))
 - Bump convolve-uv from >=0.2.0 to >=0.5.0 (#408)
+- Bump `spectral-cube` from 0.6.7 to 0.7.0 ([#412](https://github.com/PhangsTeam/phangs_imaging_scripts/pull/412))
