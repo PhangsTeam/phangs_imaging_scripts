@@ -112,6 +112,16 @@ if casa_enabled:
             self.config = config
             self.product = product
 
+            # Linear mosaic targets have no MS of their own, so there is nothing to image.
+            # Skip them gracefully, as the standard ImagingHandler does
+            self.skip_target = self._kh.is_target_linmos(self.target)
+            if self.skip_target:
+                logger.warning(f"Target {self.target} is a linear mosaic, so has no visibilities to image. "
+                               "Skipping.")
+                self.chunk_params = {}
+                self.nchunks = 0
+                return
+
             # Enforce that chunked imaging be used for cubes only.
             # Otherwise, there's no need for this approach:
             is_line_product = self.product in self._kh.get_line_products()
@@ -418,6 +428,10 @@ if casa_enabled:
                 do_revert_to_singlescale = True
                 do_export_to_fits = True
                 do_cleanup = True
+
+            if self.skip_target:
+                logger.warning(f"Target {self.target} is a linear mosaic. Skipping imaging.")
+                return
 
             cwd = os.getcwd()
 
@@ -1484,6 +1498,10 @@ if casa_enabled:
             '''
             Intended to create a final set of cubes.
             '''
+
+            if self.skip_target:
+                logger.warning(f"Target {self.target} is a linear mosaic. Skipping gathering into cubes.")
+                return
 
             accepted_root_names = ['dirty', 'singlescale', 'multiscale', None]
 
