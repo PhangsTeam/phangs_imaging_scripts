@@ -2452,6 +2452,9 @@ def estimate_synthesised_beam(
     from each unique observation ID, and then uses the minimum of these to for the beam size.
     By default, this function uses 0.574 * 80th baseline percentile, to match the analysisUtils default.
 
+    Largely taken from analysisUtils (https://doi.org/10.5281/zenodo.7502159),
+    which is licensed under a Creative Commons Attribution 4.0 International License.
+
     Args:
         vis (str): Path to measurement set
         baseline_percentile (float): The percentile of the baseline distribution to use.
@@ -2540,6 +2543,9 @@ def pick_cell_and_im_size(
     beam_size_chunk_size: int = 100_000,
 ) -> tuple[float | str, list[int]]:
     """Pick a cell size and image size for a measurement set.
+
+    Largely taken from analysisUtils (https://doi.org/10.5281/zenodo.7502159),
+    which is licensed under a Creative Commons Attribution 4.0 International License.
 
     Args:
         vis (str): Path to measurement set.
@@ -2734,6 +2740,9 @@ def get_chan_widths(
 ) -> np.ndarray:
     """Get channel widths for a given measurement set and SPW selection.
 
+    Largely taken from analysisUtils (https://doi.org/10.5281/zenodo.7502159),
+    which is licensed under a Creative Commons Attribution 4.0 International License.
+
     Args:
         vis (str): Path to measurement set.
         spw (str | int | list, optional): SPW selection. Can be a string, integer, or list of integers.
@@ -2904,6 +2913,9 @@ def get_spw_info(
 ) -> dict:
     """Get SPW information from a measurement set.
 
+    Largely taken from analysisUtils (https://doi.org/10.5281/zenodo.7502159),
+    which is licensed under a Creative Commons Attribution 4.0 International License.
+
     Args:
         vis (str): Path to measurement set.
         ignore_wvr (bool): Whether to ignore WVR SPWs. Defaults to True.
@@ -3004,6 +3016,9 @@ def get_science_spws(
 
     Will select SPWs based on specified intent. For ALMA data,
     it also can ignore channel-averaged and SQLD SPWs.
+
+    Largely taken from analysisUtils (https://doi.org/10.5281/zenodo.7502159),
+    which is licensed under a Creative Commons Attribution 4.0 International License.
 
     Args:
         vis (str): Path to measurement set.
@@ -3141,6 +3156,9 @@ def clear_pointing_table(
     vis: str,
 ):
     """Removes all rows from the POINTING table of a measurement set.
+
+    Largely taken from analysisUtils (https://doi.org/10.5281/zenodo.7502159),
+    which is licensed under a Creative Commons Attribution 4.0 International License.
 
     Args:
         vis (str): Path to the measurement set.
