@@ -44,7 +44,7 @@ dependencies = [
     "radio-beam >= 0.3.9",
     "reproject >= 0.21.0",
     "scipy >= 1.16.3",
-    "spectral-cube == 0.7.0",
+    "spectral-cube >= 0.7.0",
     "uvcombine >= 1.0.0",
 ]
 
