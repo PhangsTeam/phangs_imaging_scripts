@@ -1,5 +1,7 @@
 import copy
+import logging
 import os
+import re
 
 import analysisUtils as au
 import astropy.units as u
@@ -8,18 +10,16 @@ import numpy as np
 import pylab as pb
 from analysisUtils import mjdSecondsListToDateTime, mjdsecToUT
 
+from . import casaStuff
 from .casaStuff import (
     casa_version,
-    tbtool,
-    msmdtool,
-    metool,
-    qatool,
-    iatool,
     imhead,
     importfits,
     imregrid,
     imtrans,
 )
+
+logger = logging.getLogger(__name__)
 
 casaVersion = "{0}.{1}.{2}".format(*casa_version)
 
@@ -69,7 +69,7 @@ def prepare_sd_image(
     os.system('mv -f ' + sd_image_file + '_reorder ' + sd_image_file)
 
     # Regrid this to the input measurement set to avoid any weirdness with overlap.
-    mytb = au.createCasaTool(tbtool)
+    mytb = casaStuff.tbtool()
     mytb.open(clean_call.get_param('vis') + '/SPECTRAL_WINDOW')
     freq = mytb.getcol('CHAN_FREQ')
     n_chan = mytb.getcol('NUM_CHAN')[0]
@@ -108,7 +108,7 @@ def prepare_sd_image(
     n_chan = cube_info['shape'][-1]
     n_pol = cube_info['shape'][-2]
 
-    myia = au.createCasaTool(iatool)
+    myia = casaStuff.iatool()
     myia.open(sd_image_file)
     restoring_beam = myia.restoringbeam()
     myia.setrestoringbeam(remove=True)
@@ -137,7 +137,7 @@ def get_dish_diameter(
     freq = hdr["crval4"] * u.Unit(hdr["cunit4"])
 
     # Get restoring beam in radians
-    myia = au.createCasaTool(iatool)
+    myia = casaStuff.iatool()
     myia.open(infile=sdimage)
 
     # Beam size is the same for all channels, so just take the first
@@ -308,7 +308,7 @@ def getTPSampling(vis, obsid=0, showplot=False, plotfile='', debug=False,
     if field == '':
         field = None
 
-    mytb = au.createCasaTool(tbtool)
+    mytb = casaStuff.tbtool()
     mytb.open(vis)
     allObsIDs = mytb.getcol('OBSERVATION_ID')
     obsIDs = np.unique(allObsIDs)
@@ -329,7 +329,7 @@ def getTPSampling(vis, obsid=0, showplot=False, plotfile='', debug=False,
         print("This function requires casa >= 4.1.0.")
         return
 
-    mymsmd = au.createCasaTool(msmdtool)
+    mymsmd = casaStuff.msmdtool()
     mymsmd.open(vis)
     timeranges = {}
     timecenters = []
@@ -653,7 +653,7 @@ def getTPSampling(vis, obsid=0, showplot=False, plotfile='', debug=False,
     if (coordSys.find('AZEL') >= 0 and convert):
         coordSys = 'J2000'
         print("Converting %d coordinates from AZELGEO to J2000..." % (len(x)))
-        my_metool = au.createCasaTool(metool)
+        my_metool = casaStuff.metool()
         for i in range(len(x)):
             if ((i+1) % 10000 == 0): print("%d/%d" % (i+1,len(x)))
             ra, dec = au.computeRADecFromAzElMJD([xrad[i],yrad[i]], mjd=times[i]/86400.,
@@ -1175,7 +1175,7 @@ def getTPSampling(vis, obsid=0, showplot=False, plotfile='', debug=False,
             sample = i*labelIncrement
             pb.text(x[sample],y[sample],str(sample),size=8)
 
-        myqa = au.createCasaTool(qatool)
+        myqa = casaStuff.qatool()
         if (coordSys.find('AZEL') >= 0):
             azimString = myqa.formxxx('%frad'%(rightAscension), format='deg', prec=5)
             elevString = myqa.formxxx('%frad'%(declination), format='deg', prec=5)
@@ -1252,3 +1252,70 @@ def getTPSampling(vis, obsid=0, showplot=False, plotfile='', debug=False,
     else:
         return xSampling, ySampling, largestDimension
     # end of getTPSampling
+
+# Get source name
+def get_sourcename(filename,
+                   source='all',
+                   ):
+
+    mytb   = casaStuff.msmdtool()
+    mytb.open(filename)
+
+    # Get source field names
+    fieldnames = mytb.fieldnames()
+
+    # If we're looking for all intents, then just take the (first) science target
+    if source == 'all':
+        field = mytb.fieldsforintent('OBSERVE_TARGET#ON_SOURCE')[0]
+
+    # Else, key in on the source name. Do this in a regex-style
+    else:
+
+        # For field selection, this can be done with forward slashes,
+        # so make sure to strip them
+        if source.startswith("/"):
+            source = source.strip("/")
+
+        # Get science fieldnames as names
+        fieldnames_asname = mytb.fieldsforintent('OBSERVE_TARGET#ON_SOURCE', asnames=True)
+
+        regex_matches = [re.fullmatch(source, x) for x in fieldnames_asname]
+        regex_idxs = [x is not None for x in regex_matches]
+        found_field = any(regex_idxs)
+
+        # If we've found a match, update the source name with the first
+        # fieldname
+        if found_field:
+            source = fieldnames_asname[regex_idxs][0]
+
+        if not found_field:
+            logger.warning(f"source {source} not in field names: {', '.join(fieldnames)}")
+            return None
+
+        field = mytb.fieldsforname(source)
+
+        # If we don't find anything, get the science targets
+        if len(field) == 0:
+            field = mytb.fieldsforintent('OBSERVE_TARGET#ON_SOURCE')
+
+        # Take the first result
+        field = field[0]
+
+    source_name = fieldnames[field]
+
+    mytb.close()
+
+    return source_name
+
+# Read source coordinates
+def read_source_coordinates(filename,source):
+
+    coord_source = au.getRADecForSource(filename,source)
+    RA_h  = (coord_source.split(' ')[0]).split(':')[0]
+    RA_m  = (coord_source.split(' ')[0]).split(':')[1]
+    RA_s  = (coord_source.split(' ')[0]).split(':')[2]
+    DEC_d = (coord_source.split(' ')[1]).split(':')[0]
+    DEC_m = (coord_source.split(' ')[1]).split(':')[1]
+    DEC_s = (coord_source.split(' ')[1]).split(':')[2]
+    coord = "J2000  "+str(RA_h)+"h"+str(RA_m)+"m"+str(RA_s[0:6])+" "+str(DEC_d)+"d"+str(DEC_m)+"m"+str(DEC_s)
+    return coord

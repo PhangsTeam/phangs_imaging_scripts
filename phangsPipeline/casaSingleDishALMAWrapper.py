@@ -9,9 +9,8 @@ import numpy as np
 from astropy.io import fits
 from astropy.table import Table
 
-from . import casaLegacySingleDishRoutines as csdr
 from . import casaStuff
-from .utilsSingleDish import getTPSampling
+from .utilsSingleDish import getTPSampling, get_sourcename, read_source_coordinates
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +87,7 @@ def SDImaging(filename,
     imsize = int(round(maxsize/cell)*1.5)
 
     if phcenter == '':
-        coord_phase = csdr.read_source_coordinates(filename, source)
+        coord_phase = read_source_coordinates(filename, source)
     else:
         coord_phase = phcenter
 
@@ -375,7 +374,7 @@ def runALMAPipeline(path_galaxy,
     this_vis = ms_concat_filename
 
     # read the source name directly from the ms
-    source = csdr.get_sourcename(this_vis, source=in_source)
+    source = get_sourcename(this_vis, source=in_source)
 
     for this_product in product_dict:
 
