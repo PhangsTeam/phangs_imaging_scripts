@@ -602,17 +602,6 @@ def convolve_cube(
                 for chan in range(n_chan):
                     chan_slice = cube[chan]
 
-                    # FIXME: This has been raised in https://github.com/radio-astro-tools/spectral-cube/issues/1016
-                    #  and should be removed once fixed (for the spectral-cube convolution)
-                    # Also make sure we're converting things correctly if we're in Jy/beam-like units, but only
-                    # for spectral-cube routines
-                    if chan_slice.unit.is_equivalent(u.Jy / u.beam) and convolve_fn not in [
-                        "convolve_uv"
-                    ]:
-                        beam_ratio_factor = (target_beam.sr / chan_slice.beam.sr).value
-                    else:
-                        beam_ratio_factor = 1.0
-
                     # Do the actual convolution
                     if convolve_fn == "convolve_uv":
                         chan_slice = convolve_uv(
@@ -632,8 +621,7 @@ def convolve_cube(
                     chan_conv = chan_slice.unitless_filled_data[:]
 
                     # Put this into the data and write out
-                    chan_vals = chan_conv * beam_ratio_factor
-                    hdu[0].data[chan] = chan_vals.astype(dtype)
+                    hdu[0].data[chan] = chan_conv.astype(dtype)
                     hdu.flush()
                     bar.update()
 
