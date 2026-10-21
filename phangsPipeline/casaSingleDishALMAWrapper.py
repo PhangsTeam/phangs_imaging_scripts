@@ -1,3 +1,4 @@
+import gc
 import glob
 import logging
 import os
@@ -43,20 +44,32 @@ def extractJyperK(base_path=PATH_CALIBRATION):
     shutil.copyfile(file_script, 'jyperk.csv')
 
 
-def SDImaging(filename,
-            source,
-            name_line,
-            vel_cube_range,
-            chan_dv_kms,
-            restfreq,
-            phcenter='',
-            freq_Hz=None,
-            overwrite=True,
-            keep_only_trimmed=True):
+def SDImaging(
+    filename,
+    source,
+    name_line,
+    vel_cube_range,
+    chan_dv_kms,
+    restfreq,
+    phcenter="",
+    freq_Hz=None,
+    overwrite=True,
+    keep_only_trimmed=True,
+):
 
-    outname = f'ALMA_TP.{source}.{name_line}'
+    # Only include the source name in the output if it's not empty
+    if source != "":
+        outname = f"ALMA_TP.{source}.{name_line}"
+    else:
+        outname = f"ALMA_TP.{name_line}"
+
     outimage = f'{outname}.image'
     outweight = f'{outname}.weight'
+
+    # If the image already exists and overwrite is False, skip imaging
+    if os.path.exists(outimage) and not overwrite:
+        logger.info(f"Image {outimage} already exists and overwrite is False. Skipping.")
+        return outimage
 
     # Setup imaging:
     start_vel = min(vel_cube_range)
@@ -112,8 +125,8 @@ def SDImaging(filename,
         imsize=imsize,
         cell=str(cell)+'arcsec',
         overwrite=overwrite,
-        outfile=outname)
-
+        outfile=outname,
+    )
 
     # Trim the image:
     myia = casaStuff.iatool()
@@ -160,16 +173,18 @@ def SDImaging(filename,
 
     return outimage
 
-def runALMAPipeline(path_galaxy,
-                    ms_dirs: list | None = None,
-                    in_source='all',
-                    baseline_fit_func='poly',
-                    baseline_fit_order=1,
-                    baseline_linewindowmode='replace',
-                    baseline_linewindow=None,
-                    product_dict=None,
-                    overwrite=True):
-    '''
+def runALMAPipeline(
+    path_galaxy,
+    ms_dirs: list | None = None,
+    in_source: dict | str = "all",
+    baseline_fit_func="poly",
+    baseline_fit_order=1,
+    baseline_linewindowmode="replace",
+    baseline_linewindow=None,
+    product_dict=None,
+    overwrite=True,
+):
+    """
     Wraps the ALMA SD pipeline recipes into a single function. This it to pass
     custom parameters to the pipeline, primarily the baseline correction.
 
@@ -179,6 +194,8 @@ def runALMAPipeline(path_galaxy,
         Path to the galaxy folder.
     ms_dirs : list
         List of individual MSs
+    in_source : dict or str
+        Either a dictionary mapping a source name to an MS, or a string to apply to all
     baseline_fit_func : str
         Baseline fit function.
     baseline_fit_order : int
@@ -192,9 +209,8 @@ def runALMAPipeline(path_galaxy,
     product_dict : dict
         Dictionary of line products information.
     overwrite : bool
-        Overwrite previous results.
-
-    '''
+        Overwrite previous results. Defaults to True.
+    """
 
     if ms_dirs is None:
         ms_dirs = []
@@ -202,18 +218,20 @@ def runALMAPipeline(path_galaxy,
         logger.error("No input MSs folder provided.")
         return
 
-    from pipeline.cli import (h_init,
-                              hsd_importdata,
-                              hsd_flagdata,
-                              h_tsyscal,
-                              hsd_tsysflag,
-                              hsd_skycal,
-                              hsd_k2jycal,
-                              hsd_applycal,
-                              hsd_atmcor,
-                              hsd_baseline,
-                              hsd_blflag,
-                              h_save)
+    from pipeline.cli import (
+        h_init,
+        hsd_importdata,
+        hsd_flagdata,
+        h_tsyscal,
+        hsd_tsysflag,
+        hsd_skycal,
+        hsd_k2jycal,
+        hsd_applycal,
+        hsd_atmcor,
+        hsd_baseline,
+        hsd_blflag,
+        h_save,
+    )
     
     all_eb_names = []
 
@@ -248,10 +266,17 @@ def runALMAPipeline(path_galaxy,
         ms_workdir = os.path.join(ms_dir, 'calibrated')
         workdir = os.path.join(path_galaxy, ms_workdir)
 
-        # If we already have this directory, then clear out to avoid rerunning calibration
+        # If we already have this directory, either clear out if overwrite is True or skip
+        do_calibration = True
         if os.path.exists(workdir):
-            logger.warning(f"Directory {workdir} already exists. Will delete")
-            shutil.rmtree(workdir)
+            
+            if overwrite:
+                logger.warning(f"Directory {workdir} already exists. Will delete")
+                shutil.rmtree(workdir)
+
+            else:
+                logger.warning(f"Directory {workdir} already exists and overwrite is False. Will skip processing")
+                do_calibration = False
 
         if not os.path.exists(workdir):
             os.makedirs(workdir)
@@ -266,8 +291,9 @@ def runALMAPipeline(path_galaxy,
             logger.info("No ASDM files found.")
             raise ValueError("No ASDM files found.")
 
-        # Retrieve the k2jy scaling from the auxiliary calibration products.
-        extractJyperK()
+        if do_calibration:
+            # Retrieve the k2jy scaling from the auxiliary calibration products.
+            extractJyperK()
 
         # Extract MS names from the JyperK table
         jyperk_tab = Table.read("jyperk.csv")
@@ -306,31 +332,35 @@ def runALMAPipeline(path_galaxy,
         logger.info(f"Using these ASDM files: {eb_names}")
 
         # Run pipeline recipe.
-        context = h_init()
-        try:
-            hsd_importdata(vis=eb_names)
+        if do_calibration:
+            context = h_init()
+            try:
+                hsd_importdata(vis=eb_names)
 
-            hsd_flagdata(pipelinemode="automatic")
-            h_tsyscal(pipelinemode="automatic")
-            hsd_tsysflag(pipelinemode="automatic")
-            hsd_skycal(pipelinemode="automatic")
-            hsd_k2jycal(dbservice=False)
-            hsd_applycal(pipelinemode="automatic")
-            hsd_atmcor(pipelinemode="automatic")
+                hsd_flagdata(pipelinemode="automatic")
+                h_tsyscal(pipelinemode="automatic")
+                hsd_tsysflag(pipelinemode="automatic")
+                hsd_skycal(pipelinemode="automatic")
+                hsd_k2jycal(dbservice=False)
+                hsd_applycal(pipelinemode="automatic")
+                hsd_atmcor(pipelinemode="automatic")
 
-            # NOTE: single baseline fit only. The pipeline repeats after 1 flagging step.
-            # May need to revisit if flagging is missed.
-            hsd_baseline(pipelinemode="automatic",
-                         fitfunc=baseline_fit_func,
-                         fitorder=baseline_fit_order,
-                         linewindowmode=baseline_linewindowmode,
-                         linewindow=baseline_linewindow,
-                         )
-            hsd_blflag(pipelinemode="automatic")
+                # NOTE: single baseline fit only. The pipeline repeats after 1 flagging step.
+                # May need to revisit if flagging is missed.
+                hsd_baseline(pipelinemode="automatic",
+                             fitfunc=baseline_fit_func,
+                             fitorder=baseline_fit_order,
+                             linewindowmode=baseline_linewindowmode,
+                             linewindow=baseline_linewindow,
+                             )
+                hsd_blflag(pipelinemode="automatic")
+    
+            finally:
+                h_save()
 
-
-        finally:
-            h_save()
+            # Remove the pipeline context, just in case this causes memory use to grow
+            del context
+            gc.collect()
 
     # Move back to the overall galaxy path
     os.chdir(path_galaxy)
@@ -339,8 +369,53 @@ def runALMAPipeline(path_galaxy,
     this_vis = []
     for filename in all_eb_names:
 
+        # Find baselined files that end with _bl
         filename_pattern = f"{filename}.ms.atmcor.atmtype*_bl"
+        bl_files = glob.glob(filename_pattern)
 
+        # Split out the files, taking only the specified field name
+        for bl_file in bl_files:
+            if isinstance(in_source, str):
+                source = csdr.get_sourcename(bl_file, source=in_source)
+            elif isinstance(in_source, dict):
+                bl_file_split = bl_file.split(os.path.sep)
+
+                # Pull out the particular MS (if it exists) and get a source name
+                in_source_ms = in_source.get(bl_file_split[-3], "all")
+                source = csdr.get_sourcename(bl_file,
+                                             source=in_source_ms,
+                                             )
+            else:
+                raise TypeError("in_source must be either a string or a dictionary.")
+                
+            # Split out the source from the EBs
+            output_file = bl_file.replace("_bl", "_bl.split")
+
+            # If the file exists and we're overwriting, remove
+            if os.path.exists(output_file) and overwrite:
+                logger.warning(f"{output_file} already exists and overwrite is True. Will remove")
+                shutil.rmtree(output_file)
+
+            if not os.path.exists(output_file):
+
+                # Get the right data column out of the MS
+                mytb = casaStuff.tbtool()
+                mytb.open(bl_file)
+                colnames = mytb.colnames()
+                colnames = [x.lower() for x in colnames]
+                mytb.close()
+
+                datacolumn = "corrected" if "corrected" in colnames else "data"
+                
+                casaStuff.split(
+                    vis=bl_file,
+                    outputvis=output_file,
+                    field=source,
+                    datacolumn=datacolumn,
+                )
+            
+        # Recreate the list of baselined files, now they've been appended with .split
+        filename_pattern = f"{filename}.ms.atmcor.atmtype*_bl.split"
         bl_files = glob.glob(filename_pattern)
 
         # Add to list if we only have 1 entry
@@ -362,20 +437,23 @@ def runALMAPipeline(path_galaxy,
         logger.error("No valid MSs found for imaging.")
         raise ValueError("No valid MSs found for imaging.")
 
-    # Avoid too many files open issues
+    # Avoid too many files open issues by concatenating
     ms_concat_filename = 'ALMA_TP_concat.ms'
-    if os.path.exists(ms_concat_filename):
+
+    # Remove the concatenated MS if it already exists and overwrite is True
+    if os.path.exists(ms_concat_filename) and overwrite:
+        logger.warning(f"{ms_concat_filename} already exists, overwrite is True. Will remove")
         shutil.rmtree(ms_concat_filename)
-    casaStuff.concat(
-        vis=this_vis,
-        concatvis=ms_concat_filename,
-        respectname=True,)
-    logger.info('Msnames: %s, N=%d, concatenated: %s'%(this_vis, len(this_vis), ms_concat_filename))
+
+    if not os.path.exists(ms_concat_filename):
+        casaStuff.concat(
+            vis=this_vis,
+            concatvis=ms_concat_filename,
+            respectname=True,
+        )
+        logger.info('Msnames: %s, N=%d, concatenated: %s'%(this_vis, len(this_vis), ms_concat_filename))
 
     this_vis = ms_concat_filename
-
-    # read the source name directly from the ms
-    source = csdr.get_sourcename(this_vis, source=in_source)
 
     for this_product in product_dict:
 
@@ -388,17 +466,18 @@ def runALMAPipeline(path_galaxy,
 
         output_file = product_dict[this_product]['output_file']
 
-        # Setup imaging call:
+        # Setup imaging call. Here, we use empty source, since we've already split
+        # out the source earlier
         outimage = SDImaging(
             filename=this_vis,
-            source=source,
+            source="",
             name_line=name_line,
             vel_cube_range=vel_cube,
             chan_dv_kms=chan_dv_kms,
             restfreq=freq_rest_GHz,
             phcenter=phase_center,
             freq_Hz=None,
-            overwrite=overwrite
+            overwrite=overwrite,
             )
 
         # Export to fits
