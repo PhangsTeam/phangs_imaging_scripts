@@ -1,5 +1,4 @@
 import pytest
-import sys
 from inspect import getfullargspec
 
 try:
@@ -32,14 +31,7 @@ class TestCASAImports:
 
     casa_imports = [
         "casashell",
-        "casaplotms",
-        pytest.param(
-            "casaviewer",
-            marks=pytest.mark.xfail(
-                sys.platform == "darwin",
-                reason="casaviewer not available on Mac OS X",
-            ),
-        ),
+        pytest.param("casaplotms", marks=pytest.mark.pipeline),
         "casatasks.private.sdint_helper",
     ]
 
