@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add optional file string in derived for nonstandard workflows (#406).
 - Use SD pipeline weights in single-dish linear mosaicking (#397).
 - Expose ``min_pixperbeam`` for cube compression in ``loop_postprocess`` (#411).
+- Added support for gridding multiple singledish mosaics in the singledish pipeline (#414).
 
 ### Changed
 
