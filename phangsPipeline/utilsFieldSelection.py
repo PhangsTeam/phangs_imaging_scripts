@@ -5,12 +5,12 @@ import os
 import re
 import shutil
 
-import analysisUtils as aU
 import numpy as np
 
 from . import casaStuff
+from .casaVisRoutines import get_science_spws
 
-tb = aU.createCasaTool(casaStuff.tbtool)
+tb = casaStuff.tbtool()
 split = casaStuff.split
 
 # 
@@ -108,8 +108,14 @@ def extract_field_selections(
     # 
     # compute pb
     if pb_fwhm is None:
-        spw_dict = aU.getScienceSpws(vis, intent='OBSERVE_TARGET#ON_SOURCE', returnFreqRanges=True)
-        #print('spw_dict.values()', spw_dict.values())
+        spw_dict = get_science_spws(
+            vis,
+            intent='OBSERVE_TARGET#ON_SOURCE',
+            return_freq_ranges=True,
+        )
+        if not isinstance(spw_dict, dict):
+            raise TypeError('Expecting spw_dict to be a dictionary')
+
         min_freq = np.min(np.array(list(spw_dict.values())).ravel())
         pb_fwhm = 1.14*1.22*(3e8/min_freq)*3600*180/(ant_diam*3.1415926)
     match_radius = pb_factor * pb_fwhm / 2.0 # arcsec
