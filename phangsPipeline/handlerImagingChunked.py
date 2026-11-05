@@ -822,14 +822,16 @@ if casa_enabled:
                     deltara = np.abs(float(override_deltara))
                 else:
                     deltara = orig_imsize[0] * orig_cell_arcsec
-                imsize[0] = int(np.ceil(deltara / cell_arcsec / 2.0) * 2)
+                if override_deltara is not None or cell_arcsec != orig_cell_arcsec:
+                    imsize[0] = int(np.ceil(deltara / cell_arcsec / 2.0) * 2)
 
                 if override_deltadec is not None:
                     logger.info('applying overriding deltadec ' + str(override_deltadec) + ' arcsec')
                     deltadec = np.abs(float(override_deltadec))
                 else:
                     deltadec = orig_imsize[1] * orig_cell_arcsec
-                imsize[1] = int(np.ceil(deltadec / cell_arcsec / 2.0) * 2)
+                if override_deltadec is not None or cell_arcsec != orig_cell_arcsec:
+                    imsize[1] = int(np.ceil(deltadec / cell_arcsec / 2.0) * 2)
 
                 if any(x is not None for x in [override_cell, override_deltara, override_deltadec]):
                     logger.info('cell={0}; imsize={1} (after overrides)'.format(cell, imsize))
