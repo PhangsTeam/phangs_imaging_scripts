@@ -329,7 +329,7 @@ if casa_enabled:
                 do_singlescale_mask=False,
                 singlescale_mask_high_snr=None,
                 singlescale_mask_low_snr=None,
-                singlescale_mask_absolute=False,
+                singlescale_mask_absolute=True,
                 skip_singlescale_if_mask_empty=True,
                 do_singlescale_clean=False,
                 do_revert_to_singlescale=False,
@@ -380,7 +380,7 @@ if casa_enabled:
             singlescale_mask_low_snr : float
                 Low SNR threshold for singlescale mask.
             singlescale_mask_absolute : bool
-                If True, use absolute threshold for singlescale mask.
+                If True, use absolute threshold for singlescale mask. Default is True.
             do_singlescale_clean : bool
                 If True, singlescale clean.
             do_revert_to_singlescale : bool
@@ -1670,7 +1670,7 @@ if casa_enabled:
                 do_singlescale_mask=True,
                 singlescale_mask_high_snr=None,
                 singlescale_mask_low_snr=None,
-                singlescale_mask_absolute=False,
+                singlescale_mask_absolute=True,
                 skip_singlescale_if_mask_empty=True,
                 do_singlescale_clean=True,
                 do_revert_to_singlescale=True,
