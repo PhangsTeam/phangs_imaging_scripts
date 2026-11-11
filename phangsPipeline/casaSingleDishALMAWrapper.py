@@ -42,14 +42,14 @@ def extractJyperK(base_path=PATH_CALIBRATION):
     # Copying the jyperk.csv file to the working directory
     shutil.copyfile(file_script, 'jyperk.csv')
 
-def calculate_phase_center(vis):
-    """Calculate the phase center from the mean positions of the fields in the MS.
+def calculate_image_center(vis):
+    """Calculate the image center from the mean positions of the fields in the MS.
 
     Args:
         vis (str): Path to the measurement set (MS) file.
 
     Returns:
-        str: Phase center
+        str: Image center
     """
 
     # Get the phase directions
@@ -91,9 +91,9 @@ def calculate_phase_center(vis):
     ra_str = qa.formxxx(f"{mean_ra}rad", format="hms", prec=4)
     dec_str = qa.formxxx(f"{mean_dec}rad", format="dms", prec=4)
 
-    phase_center = f"{ref_frame} {ra_str} {dec_str}"
+    image_center = f"{ref_frame} {ra_str} {dec_str}"
 
-    return phase_center
+    return image_center
 
 
 def SDImaging(
@@ -509,8 +509,8 @@ def runALMAPipeline(
 
     this_vis = ms_concat_filename
 
-    # Calculate the phase center from the concatenated MS
-    phase_center = calculate_phase_center(vis=this_vis)
+    # Calculate the image center from the concatenated MS
+    image_center = calculate_image_center(vis=this_vis)
 
     for this_product in product_dict:
 
@@ -530,7 +530,7 @@ def runALMAPipeline(
             vel_cube_range=vel_cube,
             chan_dv_kms=chan_dv_kms,
             restfreq=freq_rest_GHz,
-            phcenter=phase_center,
+            phcenter=image_center,
             freq_Hz=None,
             overwrite=overwrite,
             )
