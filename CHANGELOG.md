@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expose ``min_pixperbeam`` for cube compression in ``loop_postprocess`` (#411).
 - Allow override parameters in chunked imaging handler (#417).
 - Added support for gridding multiple singledish mosaics in the singledish pipeline (#414).
+- Set `singlescale_mask_absolute=True` as the default in imaging, reflecting actual imaging usage. (#418).
 
 ### Changed
 
