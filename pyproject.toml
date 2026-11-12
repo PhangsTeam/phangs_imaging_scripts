@@ -4,7 +4,7 @@ name = "phangsPipeline"
 dynamic = ["version"]
 description = "PHANGS-ALMA Pipeline"
 readme = "README.md"
-requires-python = ">=3.12, <3.13"
+requires-python = ">=3.12"
 license = {file = "LICENSE"}
 
 authors = [
@@ -52,13 +52,22 @@ dependencies = [
 [project.optional-dependencies]
 casa = [
     "casadata >= 2025.9.22",
-    "casaplotms >= 2.8.2",
     "casarecipes >= 0.4.0",
-    "casashell >= 6.7.3.21, < 6.7.6.14",
-    "casatasks >= 6.7.3.21, < 6.7.6.14",
-    "casatools >= 6.7.3.21, < 6.7.6.14",
-    "casaviewer >= 2.4.4 ; platform_system != 'Darwin'",
+    "casashell >= 6.7.3.21",
+    "casatasks >= 6.7.3.21",
+    "casatools >= 6.7.3.21",
+]
+pipeline = [
+    "casaplotms >= 2.8.2",  # plotms is only used within the ALMA SD pipeline.
     "pipeline@git+https://open-bitbucket.nrao.edu/scm/pipe/pipeline.git",
+    "phangsPipeline[casa]",
+]
+viewer = [
+    "casaviewer >= 2.4.4 ; platform_system != 'Darwin'",
+]
+
+all = [
+    "phangsPipeline[casa,viewer,pipeline]",
 ]
 
 # Optional packages for the test suite
