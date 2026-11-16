@@ -12,6 +12,7 @@ import scipy.ndimage as ndimage
 from astropy.io import fits
 from astropy.wcs.utils import proj_plane_pixel_scales
 from radio_beam import Beam
+from scipy.ndimage import binary_dilation
 from scipy.special import erfc, ndtri_exp
 from scipy.stats import kurtosis, skew
 from spectral_cube import Projection, SpectralCube
@@ -713,6 +714,14 @@ def mask_noise_channels(
         f,
         sigma_threshold=sigma_threshold,
     )
+
+    # To be safe, do a couple of rounds of binary dilation. We need to invert
+    # here since we want to dilate the False values
+    noise_only_channels = [not x for x in noise_only_channels]
+    for _ in range(2):
+        noise_only_channels = binary_dilation(noise_only_channels)
+    noise_only_channels = [not x for x in noise_only_channels]
+
     total_noise_only = sum(noise_only_channels)
     logger.info(f"{total_noise_only}/{len(noise_only_channels)} channels identified as noise-only.")
 
