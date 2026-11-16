@@ -703,10 +703,10 @@ def mask_noise_channels(
 
     f = cube_root + '.image' + suffix_in
 
-    logger.info('Reading cube.')
-    cube = read_cube(f, huge_cube_workaround=True)
+    logger.info("Getting cube shape.")
+    cube_shape = casaStuff.imhead(f, mode="list")["shape"]
 
-    mask = np.ones(cube.shape, dtype=bool)
+    mask = np.ones(cube_shape, dtype=bool)
 
     logger.info("Finding noise-only channels")
     noise_only_channels = get_noise_only_channels(
@@ -716,7 +716,7 @@ def mask_noise_channels(
     total_noise_only = sum(noise_only_channels)
     logger.info(f"{total_noise_only}/{len(noise_only_channels)} channels identified as noise-only.")
 
-    for chan_idx in range(cube.shape[spec_axis]):
+    for chan_idx in range(cube_shape[spec_axis]):
 
         if noise_only_channels[chan_idx]:
 
