@@ -173,6 +173,7 @@ if casa_enabled:
             convergence_noise_z_threshold=None,
             channel_noise_sigma_threshold=None,
             singlescale_threshold_value=1.0,
+            max_loops=20,
             extra_ext_in=None,
             suffix_in=None,
             extra_ext_out=None,
@@ -242,6 +243,9 @@ if casa_enabled:
                 greater than 2.0.
             singlescale_threshold_value : float
                 Threshold value for singlescale clean. Default is 1.0.
+            max_loops : int
+                Maximum number of clean loops for the multiscale and singlescale
+                clean stages. Default is 20.
             extra_ext_in : str
                 Extra extension for input files.
             suffix_in : str
@@ -378,6 +382,7 @@ if casa_enabled:
                         convergence_noise_z_threshold=convergence_noise_z_threshold,
                         channel_noise_sigma_threshold=channel_noise_sigma_threshold,
                         singlescale_threshold_value=singlescale_threshold_value,
+                        max_loops=max_loops,
                         dynamic_sizing=dynamic_sizing,
                         force_square=force_square,
                         export_dirty=export_dirty,
@@ -853,6 +858,7 @@ if casa_enabled:
                 imaging_method='tclean',
                 convergence_fracflux=0.01,
                 convergence_noise_z_threshold=None,
+                max_loops=20,
                 backup=True,
         ):
             """
@@ -895,7 +901,7 @@ if casa_enabled:
                            threshold_type='snr',
                            threshold_value=4.0,
                            min_loops=3,
-                           max_loops=20,
+                           max_loops=max_loops,
                            max_total_niter=None,
                            convergence_fracflux=convergence_fracflux,
                            convergence_totalflux=None,
@@ -1083,6 +1089,7 @@ if casa_enabled:
                 convergence_fracflux=0.01,
                 threshold_value=1.0,
                 convergence_noise_z_threshold=None,
+                max_loops=20,
                 backup=True,
         ):
             """
@@ -1125,7 +1132,7 @@ if casa_enabled:
                            threshold_type='snr',
                            threshold_value=threshold_value,
                            min_loops=3,
-                           max_loops=20,
+                           max_loops=max_loops,
                            max_total_niter=None,
                            convergence_fracflux=convergence_fracflux,
                            convergence_totalflux=None,
@@ -1207,6 +1214,7 @@ if casa_enabled:
             convergence_noise_z_threshold=None,
             channel_noise_sigma_threshold=None,
             singlescale_threshold_value=1.0,
+            max_loops=20,
             dynamic_sizing=True,
             force_square=False,
             export_dirty=False,
@@ -1415,6 +1423,7 @@ if casa_enabled:
                                            imaging_method=imaging_method,
                                            convergence_fracflux=convergence_fracflux,
                                            convergence_noise_z_threshold=convergence_noise_z_threshold,
+                                           max_loops=max_loops,
                                            )
 
             if do_export_to_fits and export_multiscale:
@@ -1473,6 +1482,7 @@ if casa_enabled:
                                             convergence_fracflux=convergence_fracflux,
                                             convergence_noise_z_threshold=convergence_noise_z_threshold,
                                             threshold_value=singlescale_threshold_value,
+                                            max_loops=max_loops,
                                             )
 
             # Reset the current imaging to the results of the singlescale clean.

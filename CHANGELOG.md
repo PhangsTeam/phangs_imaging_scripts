@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added support for gridding multiple singledish mosaics in the singledish pipeline (#414).
 - Set `singlescale_mask_absolute=True` as the default in imaging, reflecting actual imaging usage. (#418).
 - Add optional tests to check if cube channels are noise only, and if so to mask them out (#399).
+- Expose ``max_loops`` for multiscale and singlescale clean in ``loop_imaging`` and chunked ``run_imaging`` (#428).
 
 ### Changed
 

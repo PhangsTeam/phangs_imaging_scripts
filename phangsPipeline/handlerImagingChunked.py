@@ -341,6 +341,7 @@ if casa_enabled:
                 convergence_noise_z_threshold=None,
                 singlescale_threshold_value=1.0,
                 channel_noise_sigma_threshold=None,
+                max_loops=20,
                 extra_ext_in=None,
                 suffix_in=None,
                 extra_ext_out=None,
@@ -403,6 +404,9 @@ if casa_enabled:
             channel_noise_sigma_threshold : float
                 Threshold value for defining a channel as purely noise. Default is None,
                 which will not perform this check.
+            max_loops : int
+                Maximum number of clean loops for the multiscale and singlescale
+                clean stages. Default is 20.
             extra_ext_in : str
                 Extra extension for input files.
             suffix_in : str
@@ -492,6 +496,7 @@ if casa_enabled:
                     convergence_noise_z_threshold=convergence_noise_z_threshold,
                     channel_noise_sigma_threshold=channel_noise_sigma_threshold,
                     singlescale_threshold_value=singlescale_threshold_value,
+                    max_loops=max_loops,
                     dynamic_sizing=dynamic_sizing,
                     force_square=force_square,
                     overwrite=overwrite,
@@ -1231,6 +1236,7 @@ if casa_enabled:
             convergence_fracflux=0.01,
             convergence_noise_z_threshold=None,
             channel_noise_sigma_threshold=None,
+            max_loops=20,
             backup=True,
             gather_chunks_into_cube=False,
             remove_chunks=False,
@@ -1322,7 +1328,7 @@ if casa_enabled:
                                 threshold_type='snr',
                                 threshold_value=4.0,
                                 min_loops=3,
-                                max_loops=20,
+                                max_loops=max_loops,
                                 max_total_niter=None,
                                 convergence_fracflux=convergence_fracflux,
                                 convergence_totalflux=None,
@@ -1520,6 +1526,7 @@ if casa_enabled:
                 remove_chunks=False,
                 threshold_value=1.0,
                 skip_singlescale_if_mask_empty=True,
+                max_loops=20,
                 backup=True,
         ):
             """
@@ -1607,7 +1614,7 @@ if casa_enabled:
                         threshold_type='snr',
                         threshold_value=threshold_value,
                         min_loops=3,
-                        max_loops=20,
+                        max_loops=max_loops,
                         max_total_niter=None,
                         convergence_fracflux=convergence_fracflux,
                         convergence_totalflux=None,
@@ -1768,6 +1775,7 @@ if casa_enabled:
                 convergence_noise_z_threshold=None,
                 channel_noise_sigma_threshold=None,
                 singlescale_threshold_value=1.0,
+                max_loops=20,
                 dynamic_sizing=True,
                 force_square=False,
                 export_multiscale=False,
@@ -1853,6 +1861,7 @@ if casa_enabled:
                                                convergence_noise_z_threshold=convergence_noise_z_threshold,
                                                channel_noise_sigma_threshold=channel_noise_sigma_threshold,
                                                skip_multiscale_if_mask_empty=skip_multiscale_if_mask_empty,
+                                               max_loops=max_loops,
                                                gather_chunks_into_cube=False,
                                                )
 
@@ -1875,6 +1884,7 @@ if casa_enabled:
                                                 convergence_noise_z_threshold=convergence_noise_z_threshold,
                                                 threshold_value=singlescale_threshold_value,
                                                 skip_singlescale_if_mask_empty=skip_singlescale_if_mask_empty,
+                                                max_loops=max_loops,
                                                 gather_chunks_into_cube=False)
 
                 # Reset the current imaging to the results of the singlescale clean.
