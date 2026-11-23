@@ -1160,73 +1160,99 @@ if casa_enabled:
                         wipe_first=True)
 
 
-        @CleanCallFunctionDecorator
         def task_read_clean_mask(
                 self,
-                clean_call=None,
-                target=None,
-                config=None,
-                product=None,
+                chunk_num=None,
         ):
             """
             Identify the clean mask associated with the target and
             product, read it from disk (in FITS form) and align it to the
-            astrometry and grid of the current imaging.
+            astrometry and grid of the current imaging of each chunk.
+
+            Each chunk's current image (typically the dirty image) is used
+            as the template, so the mask is regridded onto that chunk's
+            spatial grid and channel range only. This mirrors
+            ImagingHandler.task_read_clean_mask().
+
+            Parameters
+            ----------
+            chunk_num : int, list or None
+                If None, will loop through all chunks. If a list or integer are given,
+                this will loop through only the specified chunk numbers defined in
+                `ImagingChunkedHandler.chunk_params`.
             """
 
-            # TODO: check the import and align can be done efficiently per chunk
-            # Otherwise, we need the ability to only do this operation once, then split
+            chunks_iter = self.return_valid_chunks(chunk_num=chunk_num)
 
-            raise NotImplementedError
-
-            if target is None:
-                logger.warning("Require a target. Returning.")
-                return ()
-
-            # if config is None:
-            #    logger.warning("Require a config. Returning.")
-            #    return()
-
-            if product is None:
-                logger.warning("Require a product. Returning.")
-                return ()
-
-            # Could add an error check here that the template imaging exists
-
-            this_cleanmask = self._kh.get_cleanmask_filename(target=target, product=product)
+            this_cleanmask = self._kh.get_cleanmask_filename(target=self.target, product=self.product)
             if this_cleanmask is None:
-                logger.info("No clean mask found for target " + target + " product " + product)
-                # AKL - propose to deprecate
-                # clean_call.set_param('usemask','pb')
+                logger.info("No clean mask found for target " + self.target + " product " + self.product)
                 return ()
 
             logger.info("")
             logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%")
-            logger.info("Reading and aligning clean mask.")
-            logger.info('From target ' + target + ' product ' + product)
-            logger.info('To ' + clean_call.get_param('imagename'))
+            logger.info(f"Reading and aligning clean mask for {len(chunks_iter)} chunks.")
+            logger.info('From target ' + self.target + ' product ' + self.product)
+            logger.info('Mask file: ' + this_cleanmask)
             logger.info("&%&%&%&%&%&%&%&%&%&%&%&%&%")
             logger.info("")
 
             if self._dry_run:
                 return ()
-            if not casa_enabled:
-                return ()
 
-            # Get fname dict
-            fname_dict = self._fname_dict(product=product, imagename=clean_call.get_param('imagename'),
+            for ii, this_chunk_num in enumerate(chunks_iter):
+
+                fname_dict = self._fname_dict(self.chunk_params[this_chunk_num]['full_imagename'],
+                                              imaging_method=self.imaging_method)
+
+                # As in ImagingHandler, align to the SD image grid for sdintimaging
+                if self.imaging_method == 'sdintimaging':
+                    template_name = fname_dict['image'].replace('.joint.', '.sd.')
+                else:
+                    template_name = fname_dict['image']
+
+                if not os.path.isdir(template_name):
+                    logger.warning(f"Template image not found for chunk {this_chunk_num}: {template_name}. "
+                                   "Make the dirty image first. Skipping this chunk.")
+                    continue
+
+                logger.info(f"Aligning clean mask to chunk {this_chunk_num} ({ii + 1} of {len(chunks_iter)}): "
+                            f"{fname_dict['mask']}")
+
+                msr.import_and_align_mask(in_file=this_cleanmask,
+                                          out_file=fname_dict['mask'],
+                                          template=template_name,
+                                          blank_to_match=True)
+
+            return ()
+
+        def _use_pb_mask_if_no_mask(self, clean_call):
+            """
+            If no mask exists on disk for this clean call (e.g. no clean mask
+            was found, or none was supplied) and no user mask is defined in
+            the clean parameter file, fall back to a primary beam based mask.
+            This mirrors the check in ImagingHandler.recipe_phangsalma_imaging().
+            """
+
+            fname_dict = self._fname_dict(clean_call.get_param('imagename'),
                                           imaging_method=self.imaging_method)
 
-            # import_and_align_mask
-            msr.import_and_align_mask(in_file=this_cleanmask,
-                                      out_file=fname_dict['mask'],
-                                      template=fname_dict['image'],
-                                      blank_to_match=True)
-            # AKL - propose to deprecate
-            # clean_call.set_param('usemask','user')
+            mask_name = fname_dict['mask']
+            if os.path.isdir(mask_name):
+                return
 
-            # if imaging_method == 'sdintimaging':
-            #     os.system('cp -r %s %s' % (out_file, out_file.replace('.joint.cube', '.int.cube')))
+            logger.warning("I looked for this and did not find it: " + mask_name)
+            if (clean_call.get_param('usemask') == "user") and (clean_call.get_param('mask') is not None) and (
+                    clean_call.get_param('mask') != ''):
+                logger.debug(f"Using the user mask \"{clean_call.get_param('mask')}\" "
+                             "as defined in the clean parameter file.")
+            else:
+                logger.warning("No mask found, we will use a pblimit mask.")
+                clean_call.set_param('usemask', 'pb')
+                if clean_call.get_param('pblimit') is None:
+                    clean_call.set_param('pbmask', 0.5)
+                else:
+                    clean_call.set_param('pbmask', clean_call.get_param('pblimit'))
 
 
         @CleanCallFunctionDecorator
@@ -1283,7 +1309,11 @@ if casa_enabled:
                     logger.warning("I expected a multiscale or mtmfs deconvolver but got " + str(
                         this_clean_call.get_param('deconvolver')) + ".")
                     raise Exception("Incorrect clean call! Should have a multiscale or mtmfs deconvolver.")
-                
+
+                # If there is no mask in place (no clean mask found, or none
+                # supplied), fall back to a primary beam based mask
+                self._use_pb_mask_if_no_mask(this_clean_call)
+
                 # If we've masked noise channels, make sure we use the mask
                 if channel_noise_sigma_threshold is not None:
                     this_clean_call.set_param("usemask", "user")
@@ -1838,14 +1868,8 @@ if casa_enabled:
                                                 tag='dirty')
 
                 # Read and align the clean mask to the astrometry of the image.
-                do_read_clean_mask = False
                 if do_read_clean_mask:
-                    raise NotImplementedError
-                #     self.task_read_clean_mask(
-                #         # AKL - propose to deprecate interaction with the clean_call here
-                #         clean_call=clean_call,
-                #         target=target, config=config, product=product,
-                #         imaging_method=imaging_method)
+                    self.task_read_clean_mask(chunk_num=chunk_to_iter)
 
                 # Mask noise channels if we have a sigma threshold defined
                 if channel_noise_sigma_threshold is not None:
