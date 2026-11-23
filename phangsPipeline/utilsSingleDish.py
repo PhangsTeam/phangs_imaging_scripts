@@ -4,11 +4,14 @@ import os
 import re
 
 import analysisUtils as au
+import astropy.constants as const
 import astropy.units as u
 import matplotlib
 import numpy as np
 import pylab as pb
 from analysisUtils import mjdSecondsListToDateTime, mjdsecToUT
+from astropy.coordinates import AltAz, EarthLocation, SkyCoord
+from astropy.time import Time
 
 from . import casaStuff
 from .casaStuff import (
@@ -17,7 +20,9 @@ from .casaStuff import (
     importfits,
     imregrid,
     imtrans,
+    tbtool,
 )
+from .casaVisRoutines import get_representative_freq
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +191,344 @@ def move_sd_psf(
     os.system(f"cp -r {in_psf} {out_psf}")
 
     return True
+
+def get_singledish_imaging_params(
+        vis: str,
+        freq: u.Quantity | None = None,
+        dish_dia: u.Quantity = 12.0 * u.m,
+        beam_coefficient: float = 1.13,
+        oversamp: float = 5.0,
+        padding_factor: float = 1.5,
+) -> tuple[float, str, list[int]]:
+    """Get the cell size, image center, and image size for a given singledish visibility file.
+
+    Args:
+        vis (str): path to the visibility file.
+        freq (u.Quantity): frequency of the observation.
+            If None, it will be inferred from the visibility file. Defaults to None.
+        dish_dia (u.Quantity): diameter of the dish.
+            Defaults to 12.0 * u.m.
+        beam_coefficient (float): coefficient for the beam size calculation.
+            Defaults to 1.13.
+        oversamp (float): oversampling factor for the cell size.
+            Defaults to 5.0.
+        padding_factor (float): factor to pad the image size.
+            Defaults to 1.5.
+
+    Returns:
+        tuple[float, str, list[int]]: cell size in arcseconds, image centre as a string,
+            and image size as a list of two integers [nx, ny].
+    """
+
+    if freq is None:
+        freq = get_representative_freq(vis)
+
+    beam_size = get_singledish_beam_size(
+        freq,
+        dish_dia,
+        beam_coefficient,
+    )
+
+    # Convert to a cell size to oversample the beam
+    cell_size = beam_size / oversamp
+
+    # Get central coord and extent for the MS
+    image_center, width, height = get_singledish_centre_and_extent(vis)
+
+    # Convert the width/height to pixels, casting to int and rounding up
+    nx = int(np.ceil(width.to(u.arcsec).value / cell_size) * padding_factor)
+    ny = int(np.ceil(height.to(u.arcsec).value / cell_size) * padding_factor)
+
+    im_size = [nx, ny]
+
+    return cell_size, image_center, im_size
+
+
+def get_singledish_beam_size(
+        freq: u.Quantity,
+        dish_dia: u.Quantity = 12.0 * u.m,
+        beam_coefficient: float = 1.13,
+) -> float:
+    """Get the beam size for a given dish diameter and frequency.
+
+    Args:
+        freq (u.Quantity): frequency of the observation.
+        dish_dia (u.Quantity): diameter of the dish. Defaults to 12.0 * u.m.
+        beam_coefficient (float): coefficient for the beam size calculation. Defaults to 1.13.
+
+    Returns:
+        float: beam size in arcseconds
+    """
+
+    beam_size = (beam_coefficient * const.c / (freq * dish_dia)) * u.rad
+    beam_size_arcsec = beam_size.to(u.arcsec).value
+
+    return beam_size_arcsec
+
+
+def _to_xyz(lon, lat):
+    """Convert lon/lat to xyz coordinates"""
+    xyz = np.array([np.cos(lat) * np.cos(lon),
+                    np.cos(lat) * np.sin(lon),
+                    np.sin(lat)])
+
+    return xyz
+
+
+def get_singledish_centre_and_extent(
+        vis: str,
+) -> tuple[str, u.Quantity, u.Quantity]:
+    """Get the centre and extent of a singledish visibility file.
+
+    Args:
+        vis (str): path to the visibility file.
+
+    Returns:
+        tuple[str, u.Quantity, u.Quantity]: image centre as a string, width and height in arcseconds
+    """
+
+    tb = tbtool()
+
+    # Get the state ID for science observations
+    tb.open(f"{vis}/STATE")
+    modes = tb.getcol("OBS_MODE")
+    state_ids = [i for i, m in enumerate(modes) if "OBSERVE_TARGET#ON_SOURCE" in m]
+    if not state_ids:
+        raise ValueError("No science states found in the STATE table")
+
+    tb.close()
+
+    # Set some conditions here, we only want science data, and not flagged data
+    conditions = [
+        f"STATE_ID IN {state_ids}",
+        "ANTENNA1 == ANTENNA2",
+        "NOT FLAG_ROW",
+    ]
+
+    # Get antenna positions
+    tb.open(f"{vis}/ANTENNA")
+    ant_pos = tb.getcol('POSITION').T  # (nant, 3), ITRF metres
+    tb.close()
+
+    # Get pointing information
+    tb.open(f"{vis}/POINTING")
+    p_time = tb.getcol('TIME')
+    p_ant = tb.getcol('ANTENNA_ID')
+    p_dir = tb.getcol('DIRECTION')[:, 0, :]  # (2, nrow), rad; drop poly terms
+    p_int = tb.getcol('INTERVAL')
+    frame = tb.getcolkeyword('DIRECTION', 'MEASINFO').get('Ref', 'J2000')
+    tb.close()
+
+    # Calculate a maximum gap over which we don't interpolate between EBs
+    max_gap = 2.0 * np.median(p_int)
+
+    # Now, we'll loop over scans
+    tb.open(vis)
+
+    scan_numbers = np.unique(tb.getcol("SCAN_NUMBER"))
+
+    # Keep track of the RA/Dec for each scan, as well as the minimum/maximum
+    cen_ras = []
+    cen_decs = []
+    min_ras = []
+    max_ras = []
+    min_decs = []
+    max_decs = []
+
+    for s in scan_numbers:
+
+        scan_conditions = conditions.copy()
+        scan_conditions.append(f"SCAN_NUMBER == {s}")
+
+        sub = tb.query(" AND ".join(scan_conditions))
+
+        # If we don't find anything, continue
+        if sub.nrows() == 0:
+            continue
+
+        # Get a mask for flagged rows
+        flags = sub.getcol("FLAG")
+        flag_axes = tuple(range(flags.ndim - 1))
+        completely_flagged = np.all(flags, axis=flag_axes)
+
+        time = sub.getcol('TIME')
+        ant = sub.getcol('ANTENNA1')
+
+        sub.close()
+
+        # Remove flagged rows
+        time = time[~completely_flagged]
+        ant = ant[~completely_flagged]
+
+        # If we now have nothing, continue
+        if time.size == 0:
+            continue
+
+        lon = np.full(time.size, np.nan)
+        lat = np.full(time.size, np.nan)
+        valid = np.zeros(time.size, dtype=bool)
+
+        for a in np.unique(ant):
+            rows = np.where(ant == a)[0]
+            prow = np.where(p_ant == a)[0]
+            if prow.size == 0:
+                continue
+            prow = prow[np.argsort(p_time[prow])]  # this antenna's POINTING rows, time-sorted
+            pt = p_time[prow]
+            t = time[rows]
+
+            # Nearest pointing sample to each data time
+            idx = np.clip(np.searchsorted(pt, t), 1, pt.size - 1)
+            left = np.abs(t - pt[idx - 1]) <= np.abs(t - pt[idx])
+            near = np.where(left, idx - 1, idx)
+
+            lon[rows] = p_dir[0, prow[near]]
+            lat[rows] = p_dir[1, prow[near]]
+            valid[rows] = np.abs(t - pt[near]) <= max_gap
+
+        # Only take valid values
+        lon = lon[valid]
+        lat = lat[valid]
+        time = time[valid]
+        ant = ant[valid]
+
+        if frame.upper().startswith('AZEL'):
+            ra, dec = azel_to_icrs_fast(lon, lat, time, ant, ant_pos)
+            ra = ra[np.isfinite(ra)]
+            dec = dec[np.isfinite(dec)]
+
+        else:
+            ra = np.degrees(lon)
+            dec = np.degrees(lat)
+
+        ra = np.radians(ra)
+        dec = np.radians(dec)
+
+        # Centre = direction of the mean unit vector (immune to the 0/360 wrap)
+        xyz = np.array([np.cos(dec) * np.cos(ra),
+                        np.cos(dec) * np.sin(ra),
+                        np.sin(dec)]).mean(axis=1)
+        ra0 = np.arctan2(xyz[1], xyz[0]) % (2 * np.pi)
+        dec0 = np.arcsin(xyz[2] / np.linalg.norm(xyz))
+
+        # Gnomonic (TAN) projection about the centre -> offsets in radians
+        cosc = (np.sin(dec0) * np.sin(dec) +
+                np.cos(dec0) * np.cos(dec) * np.cos(ra - ra0))
+        x = np.cos(dec) * np.sin(ra - ra0) / cosc
+        y = (np.cos(dec0) * np.sin(dec) -
+             np.sin(dec0) * np.cos(dec) * np.cos(ra - ra0)) / cosc
+
+        # Re-centre in the middle of the bounding box, not the sample-weighted mean
+        xc, yc = 0.5 * (x.min() + x.max()), 0.5 * (y.min() + y.max())
+        rho = np.hypot(xc, yc)
+        if rho > 0:
+            c = np.arctan(rho)
+            dec_c = np.arcsin(np.cos(c) * np.sin(dec0) +
+                              yc * np.sin(c) * np.cos(dec0) / rho)
+            ra_c = ra0 + np.arctan2(xc * np.sin(c),
+                                    rho * np.cos(dec0) * np.cos(c) -
+                                    yc * np.sin(dec0) * np.sin(c))
+        else:
+            ra_c, dec_c = ra0, dec0
+
+        # Convert these back to degrees for simplicity later
+        ra_c = np.degrees(ra_c)
+        dec_c = np.degrees(dec_c)
+
+        ra = np.degrees(ra)
+        dec = np.degrees(dec)
+
+        cen_ras.append(ra_c)
+        cen_decs.append(dec_c)
+
+        min_ras.append(ra.min())
+        max_ras.append(ra.max())
+        min_decs.append(dec.min())
+        max_decs.append(dec.max())
+
+    tb.close()
+
+    max_ras = np.array(max_ras)
+    min_ras = np.array(min_ras)
+    max_decs = np.array(max_decs)
+    min_decs = np.array(min_decs)
+
+    # Finally, calculate an overall centre for the entire MS, and a width that encompasses all scans
+    cen_ra = np.mean(cen_ras) % 360
+    cen_dec = np.mean(cen_decs)
+
+    width = (max_ras.max() - min_ras.min()) * u.deg
+    height = (max_decs.max() - min_decs.min()) * u.deg
+
+    # Return the image centre as a string
+    image_center = f"J2000 {cen_ra:.6f}deg {cen_dec:.6f}deg"
+
+    logger.info("Calculated singledish image parameters:")
+    logger.info(f"Singledish image centre: {image_center}, width: {width.to(u.arcsec)}, height: {height.to(u.arcsec)}")
+
+    return image_center, width.to(u.arcsec), height.to(u.arcsec)
+
+
+def azel_to_icrs_fast(az, el, time, ant, ant_pos, step=10.0, delta=1e-3):
+    """Fast AZELGEO -> ICRS for many samples.
+
+    The AzEl->ICRS mapping changes slowly with time, so for each antenna we
+    evaluate it exactly with astropy only on a coarse time grid (every `step`
+    seconds), as a local 3x3 linear map fitted to three points around the
+    pointing, then interpolate that map to every sample.
+
+    az, el: radians; time: MJD seconds (UTC); ant: antenna index per sample;
+    ant_pos: (nant, 3) ITRF metres. Returns ra, dec in degrees.
+    """
+    ra = np.full(az.size, np.nan)
+    dec = np.full(az.size, np.nan)
+
+    for a in np.unique(ant):
+        sel = np.where(ant == a)[0]
+        t = time[sel]
+        v = _to_xyz(-az[sel], el[sel])  # left-handed az -> use -az for xyz
+
+        tg = np.arange(t.min(), t.max() + step, step)
+        if tg.size < 2:
+            tg = np.array([t.min(), t.min() + step])
+
+        # Anchor at the (interpolated) pointing at each grid time
+        order = np.argsort(t)
+        anc = np.array([np.interp(tg, t[order], v[i, order]) for i in range(3)])
+        anc /= np.linalg.norm(anc, axis=0)
+        a_az = -np.arctan2(anc[1], anc[0])
+        a_el = np.arcsin(np.clip(anc[2], -1, 1))
+
+        # Three nearby, independent directions per grid time
+        p_az = np.concatenate([a_az, a_az + delta, a_az])
+        p_el = np.concatenate([a_el, a_el, a_el + delta])
+        p_t = np.tile(tg, 3)
+
+        loc = EarthLocation.from_geocentric(*ant_pos[a], unit=u.m)
+        frame = AltAz(obstime=Time(p_t / 86400.0, format='mjd', scale='utc'),
+                      location=loc)
+        sc = SkyCoord(az=p_az * u.rad, alt=p_el * u.rad, frame=frame).icrs
+        w = _to_xyz(sc.ra.rad, sc.dec.rad)
+
+        n = tg.size
+        V = np.stack([_to_xyz(-p_az[k * n:(k + 1) * n], p_el[k * n:(k + 1) * n])
+                      for k in range(3)], axis=2)       # (3, n, 3 points)
+        W = np.stack([w[:, k * n:(k + 1) * n] for k in range(3)], axis=2)
+        # M @ V = W per grid time  ->  M = W V^-1
+        M = np.einsum('inj,njk->nik', W, np.linalg.inv(V.transpose(1, 0, 2)))
+
+        # Interpolate each matrix element to the sample times and apply
+        Mi = np.empty((t.size, 3, 3))
+        for i in range(3):
+            for j in range(3):
+                Mi[:, i, j] = np.interp(t, tg, M[:, i, j])
+        out = np.einsum('nij,jn->in', Mi, v)
+        out /= np.linalg.norm(out, axis=0)
+
+        ra[sel] = np.degrees(np.arctan2(out[1], out[0])) % 360
+        dec[sel] = np.degrees(np.arcsin(np.clip(out[2], -1, 1)))
+
+    return ra, dec
 
 
 def setXaxisTimeTicks(adesc, t0, t1, verbose=True):
