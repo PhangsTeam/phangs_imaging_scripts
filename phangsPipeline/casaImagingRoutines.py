@@ -574,7 +574,20 @@ def make_dirty_image(
         raise Exception("Please input a valid clean call!")
 
     dirty_clean_call = copy.deepcopy(clean_call)
-    dirty_clean_call.set_param('niter', 0)
+
+    # For sdintimaging, we need one iteration to get an image. Use a low
+    # gain to try and not change anything
+    if imaging_method == "sdintimaging":
+        dirty_clean_call.set_param("niter", 1)
+        dirty_clean_call.set_param("cycleniter", 1)
+        dirty_clean_call.set_param("gain", 0.001)
+
+        # Make sure we use hogbom cleaning here
+        dirty_clean_call.set_param("deconvolver", "hogbom")
+        
+    else:
+        dirty_clean_call.set_param('niter', 0)
+
     dirty_clean_call.set_param('calcres', True)
     dirty_clean_call.set_param('calcpsf', True)
 
