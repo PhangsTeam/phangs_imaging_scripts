@@ -319,7 +319,9 @@ def noise_cube(data,
                     noise_map_pad = np.pad(noise_map, pad, 'edge') 
                     noise_map_pad = convolve_fft(noise_map_pad, kernel,
                                                  nan_treatment='interpolate', 
-                                                 boundary='wrap')
+                                                 boundary='wrap',
+                                                 allow_huge=True,
+                                                 )
                     noise_map = noise_map_pad[pad:-pad, pad:-pad]
                 else:
                     noise_map = convolve(noise_map, kernel, boundary='extend')
