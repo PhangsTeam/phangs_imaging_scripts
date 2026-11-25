@@ -568,6 +568,7 @@ def convolve_cube(
     kwargs = {
         "nan_treatment": nan_treatment,
         "preserve_nan": True,
+        "allow_huge": True,
     }
 
     with fits.open(outfile, mode="update") as hdu:
