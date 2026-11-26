@@ -346,8 +346,13 @@ def get_singledish_centre_and_extent(
         if sub.nrows() == 0:
             continue
 
-        # Get a mask for flagged rows
-        flags = sub.getcol("FLAG")
+        # Get a mask for flagged rows.
+        # Sometimes trying to pull out the FLAG column fails.
+        # In that case, just make a dummy array of all False flags
+        try:
+            flags = sub.getcol("FLAG")
+        except RuntimeError:
+            flags = np.zeros((1, 1, sub.nrows()))
         flag_axes = tuple(range(flags.ndim - 1))
         completely_flagged = np.all(flags, axis=flag_axes)
 
