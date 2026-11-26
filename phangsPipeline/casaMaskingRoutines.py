@@ -715,10 +715,10 @@ def mask_noise_channels(
         sigma_threshold=sigma_threshold,
     )
 
-    # To be safe, do a couple of rounds of binary dilation. We need to invert
+    # To be safe, do a few rounds of binary dilation. We need to invert
     # here since we want to dilate the False values
     noise_only_channels = [not x for x in noise_only_channels]
-    for _ in range(2):
+    for _ in range(5):
         noise_only_channels = binary_dilation(noise_only_channels)
     noise_only_channels = [not x for x in noise_only_channels]
 
