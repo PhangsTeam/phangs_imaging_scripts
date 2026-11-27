@@ -76,6 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed regression in get_ghz_range_for_line (#409).
 - Remove obsolete keywords so legacy singledish pipeline works again (#410).
 - ``ImagingChunkedHandler`` skips linear mosaic targets rather than crashing (#413).
+- Avoid scalar-conversion errors with newer numpy in singledish pipeline (#433).
 
 ### Dependencies
 - Bump actions/upload-artifact from 6 to 7 (#313).
