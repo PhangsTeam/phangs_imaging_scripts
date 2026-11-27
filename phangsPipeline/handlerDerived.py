@@ -146,6 +146,11 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
             logger.error("Need a products list.")
             return (None)
 
+        if np.isin(self.get_all_products(), self._kh.get_continuum_products()).any():
+            logger.warning(
+                "Continuum data are not supported for derived products "
+                "and will be skipped by the pipeline.")
+
         # If requested, make the directories
 
         if make_directories:
@@ -156,7 +161,9 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
         if do_convolve:
 
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
 
                 # Always start with the native resolution
 
@@ -215,7 +222,9 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
         if do_noise:
 
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
 
                 # Always start with the native resolution
 
@@ -250,7 +259,9 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
         if do_strictmask:
 
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
 
                 # Always start with the native resolution
 
@@ -277,7 +288,10 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
         if do_broadmask:
 
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
+                
                 # Only build one broad mask that covers all resolutions
 
                 self.task_build_broad_mask(
@@ -289,7 +303,9 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
         if do_moments:
 
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
 
                 # Always start with the native resolution
 
@@ -313,7 +329,9 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
         if do_secondary:
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
 
                 # Loop over all angular and physical resolutions.
 
@@ -338,7 +356,10 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
         if do_vfield:
 
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
+                
                 # Only build one velocity field that covers all resolutions
 
                 self.task_build_vfield(
@@ -350,7 +371,10 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
         if do_shuffling:
 
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
+                
                 # Always start with the native resolution
 
                 self.task_shuffle_cube(
@@ -388,7 +412,9 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
         if do_flatmask:
 
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
 
                 #
                 # Flat Strict Mask
@@ -441,7 +467,9 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
         if do_flatmaps:
 
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
 
                 # Always start with the native resolution
 
