@@ -77,6 +77,7 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
             do_shuffling: bool = False,
             do_flatmask: bool = False,
             do_flatmaps: bool = False,
+            do_copy_cont: bool = False,
             extra_ext: str = '',
             convolve_method: str = "convolve_fft",
             make_directories: bool = True,
@@ -111,6 +112,9 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                 generate flat masks. Defaults to False.
             do_flatmaps (bool, optional): If True, will
                 generate flat maps. Defaults to False.
+            do_copy_cont (bool, optional): If True, will copy the
+                native-resolution continuum images to the derived directory.
+                No other products are made for continuum. Defaults to False.
             extra_ext (str, optional): Optional filename suffix (for
                 example "_prior_co21") to keep products from different
                 derivation contexts separate. Defaults to ''.
@@ -131,10 +135,11 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
             do_broadmask = True
             do_moments = True
             do_secondary = True
-            do_vfield = True,
+            do_vfield = True
             do_shuffling = True
             do_flatmask = True
             do_flatmaps = True
+            do_copy_cont = True
 
         # Error checking
 
@@ -146,6 +151,11 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
             logger.error("Need a products list.")
             return (None)
 
+        if np.isin(self.get_all_products(), self._kh.get_continuum_products()).any():
+            logger.warning(
+                "Continuum data are only copied to the derived directory "
+                "(with do_copy_cont); no other derived products are made.")
+
         # If requested, make the directories
 
         if make_directories:
@@ -156,7 +166,9 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
         if do_convolve:
 
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
 
                 # Always start with the native resolution
 
@@ -210,12 +222,32 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
                         overwrite=overwrite,
                     )
 
+        # Copy the native-resolution continuum image
+        
+        if do_copy_cont:
+
+            for this_target, this_product, this_config in \
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_cont=True):
+
+                self.task_convolve(
+                    target=this_target,
+                    config=this_config,
+                    product=this_product,
+                    extra_ext_out=extra_ext,
+                    just_copy=True,
+                    overwrite=overwrite,
+                )
+
         # Estimate the noise for each cube.
 
         if do_noise:
 
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
 
                 # Always start with the native resolution
 
@@ -250,7 +282,9 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
         if do_strictmask:
 
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
 
                 # Always start with the native resolution
 
@@ -277,7 +311,10 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
         if do_broadmask:
 
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
+                
                 # Only build one broad mask that covers all resolutions
 
                 self.task_build_broad_mask(
@@ -289,7 +326,9 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
         if do_moments:
 
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
 
                 # Always start with the native resolution
 
@@ -313,7 +352,9 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
 
         if do_secondary:
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
 
                 # Loop over all angular and physical resolutions.
 
@@ -338,7 +379,10 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
         if do_vfield:
 
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
+                
                 # Only build one velocity field that covers all resolutions
 
                 self.task_build_vfield(
@@ -350,7 +394,10 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
         if do_shuffling:
 
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
+                
                 # Always start with the native resolution
 
                 self.task_shuffle_cube(
@@ -388,7 +435,9 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
         if do_flatmask:
 
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
 
                 #
                 # Flat Strict Mask
@@ -441,7 +490,9 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
         if do_flatmaps:
 
             for this_target, this_product, this_config in \
-                    self.looper(do_targets=True, do_products=True, do_configs=True):
+                    self.looper(
+                        do_targets=True, do_products=True, do_configs=True,
+                        just_line=True):
 
                 # Always start with the native resolution
 
@@ -511,12 +562,24 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
         # Original files
         # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
 
+        # Line cubes are exported in Kelvin units (pbcorr_trimmed_k);
+        # continuum images stay in Jy/beam by default (pbcorr_trimmed).
+        is_line_product = product in self._kh.get_line_products()
+        orig_ext = 'pbcorr_trimmed_k' if is_line_product else 'pbcorr_trimmed'
+
         orig_filename = utilsFilenames.get_cube_filename(
             target=target, config=config, product=product,
-            ext='pbcorr_trimmed_k' + extra_ext_in,
+            ext=orig_ext + extra_ext_in,
             casa=False)
 
         fname_dict['orig'] = orig_filename
+
+        # In case continuum was converted to Kelvin, add an alternative name
+        if not is_line_product:
+            fname_dict['orig_alt'] = utilsFilenames.get_cube_filename(
+                target=target, config=config, product=product,
+                ext='pbcorr_trimmed_k' + extra_ext_in,
+                casa=False)
 
         # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
         # Output Convolved Cubes
@@ -708,11 +771,25 @@ class DerivedHandler(handlerTemplate.HandlerTemplate):
         coveragefile = fname_dict_out['coverage']
         coverage2dfile = fname_dict_out['coverage2d']
 
-        # Check input file existence
+        # Check input file existence. For continuum, fall back to the Kelvin
+        # version if the Jy/beam one is missing.
+
+        alt_file = fname_dict_in.get('orig_alt', None)
+        alt_exists = alt_file is not None and os.path.isfile(indir + alt_file)
 
         if not (os.path.isfile(indir + input_file)):
-            logger.warning("Missing " + indir + input_file)
-            return ()
+            if alt_exists:
+                logger.info(
+                    "Missing " + indir + input_file +
+                    ", falling back to Kelvin version: " + alt_file)
+                input_file = alt_file
+            else:
+                logger.warning("Missing " + indir + input_file)
+                return ()
+        elif alt_exists:
+            logger.warning(
+                "Both Jy/beam and Kelvin versions exist for " + input_file +
+                "; using the Jy/beam version by default.")
 
         # Access keywords for mask generation
 

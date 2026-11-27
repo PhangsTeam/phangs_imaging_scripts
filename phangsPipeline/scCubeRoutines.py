@@ -320,13 +320,18 @@ def export_and_cleanup(
 
     cube = SpectralCube.read(infile)
 
-    # Convert to km/s and write to outfile
-    cube = cube.with_spectral_unit(
-        u.km / u.s,
-        velocity_convention="radio",
-    )
-
-    cube.write(outfile, overwrite=True)
+    if cube.shape[0] == 1:
+        # single-channel (continuum) image: drop the degenerate spectral axis
+        freq = cube.with_spectral_unit(u.Hz).spectral_axis[0]
+        hdu_out = cube[0].hdu
+        for card in ('SLICE', 'RESTFRQ'):
+            hdu_out.header.remove(card, ignore_missing=True)
+        hdu_out.header['FREQ'] = (freq.value, "Reference frequency [Hz]")
+        hdu_out.writeto(outfile, overwrite=True)
+    else:
+        # convert spectral axis to velocity
+        cube = cube.with_spectral_unit(u.km / u.s, velocity_convention="radio")
+        cube.write(outfile, overwrite=True)
 
     # Read back in with astropy so we can manipulate the header
     with fits.open(outfile) as hdu:
@@ -335,6 +340,7 @@ def export_and_cleanup(
 
         # Cards to remove by default
         default_cards_to_remove = [
+            "FILENAME",
             "BLANK",
             "DATE-OBS",
             "OBSERVER",
@@ -351,17 +357,17 @@ def export_and_cleanup(
 
         for card in default_cards_to_remove:
             if card in hdr.keys():
-                hdr.remove(card)
+                hdr.remove(card, ignore_missing=True)
 
         # User cards to remove
         for card in remove_cards:
             if card in hdr.keys():
-                hdr.remove(card)
+                hdr.remove(card, ignore_missing=True)
 
         # Delete history
         if zap_history:
             while "HISTORY" in hdr.keys():
-                hdr.remove("HISTORY")
+                hdr.remove("HISTORY", ignore_missing=True)
 
         # Add history
         if len(add_history) > 0:

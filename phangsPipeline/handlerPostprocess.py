@@ -138,10 +138,14 @@ if casa_enabled:
 
             tag = 'orig'
 
+            # Add file suffix for continuum products
+            is_line_product = product in self._kh.get_line_products()
+            tt_suffix = '' if is_line_product else '.tt0'  # only 0th order for now
+
             if imaging_method == 'tclean':
-                casaext = '.image'
+                casaext = '.image' + tt_suffix
             elif imaging_method == 'sdintimaging':
-                casaext = '.joint.cube.image'
+                casaext = '.joint.cube.image' + tt_suffix
             else:
                 logger.error('imaging_method %s not recognised' % imaging_method)
                 raise Exception('imaging_method %s not recognised' % imaging_method)
@@ -156,9 +160,9 @@ if casa_enabled:
             # Original primary beam file
 
             if imaging_method == 'tclean':
-                casaext = '.pb'
+                casaext = '.pb' + tt_suffix
             elif imaging_method == 'sdintimaging':
-                casaext = '.joint.cube.pb'
+                casaext = '.joint.cube.pb' + tt_suffix
 
             tag = 'pb'
             pb_file = utilsFilenames.get_cube_filename(
@@ -367,6 +371,13 @@ if casa_enabled:
                 ext='pbcorr_trimmed_k' + extra_ext,
                 casa=False)
             fname_dict[tag] = pbcorr_trimmed_k_fits
+
+            tag = 'pbcorr_trimmed_fits'
+            pbcorr_trimmed_fits = utilsFilenames.get_cube_filename(
+                target=target, config=config, product=product,
+                ext='pbcorr_trimmed' + extra_ext,
+                casa=False)
+            fname_dict[tag] = pbcorr_trimmed_fits
 
             tag = 'trimmed_pb_fits'
             trimmed_pb_fits = utilsFilenames.get_cube_filename(
@@ -1199,7 +1210,7 @@ if casa_enabled:
                 do_trimrind=True,
                 do_pb_too=True,
                 in_pb_tag='pb',
-                out_pb_tag='pb_trimmed',
+                out_pb_tag='trimmed_pb',
                 extra_ext_in='',
                 extra_ext_out='',
                 check_files=True,
@@ -1227,11 +1238,11 @@ if casa_enabled:
             fname_dict_out = self._fname_dict(
                 target=target, config=config, product=product, extra_ext=extra_ext_out, imaging_method=imaging_method)
 
-            infile = fname_dict_in['pbcorr_round']
-            outfile = fname_dict_out['pbcorr_trimmed']
+            infile = fname_dict_in[in_tag]
+            outfile = fname_dict_out[out_tag]
 
-            infile_pb = fname_dict_in['pb']
-            outfile_pb = fname_dict_out['trimmed_pb']
+            infile_pb = fname_dict_in[in_pb_tag]
+            outfile_pb = fname_dict_out[out_pb_tag]
 
             # Check input file existence
 
@@ -1300,7 +1311,7 @@ if casa_enabled:
                 if not files_exist:
                     return ()
 
-            template = fname_dict_out['pbcorr_trimmed']
+            template = fname_dict_out[out_tag]
 
             if check_files:
                 files_exist = check_files_exist(outdir + template,
@@ -2262,53 +2273,53 @@ if casa_enabled:
                 ext_ext='',
                 postprocessing_method="casa",
                 min_pixperbeam: int = 3,
+                convert_to_kelvin=None,
         ):
             """
             Recipe that cleans up the output for one target, converting to
-            Kelvin, compressing and trimming the cube and then exporting
-            as a FITS file.
+            Kelvin when relevant, compressing and trimming the cube, and then
+            exporting as a FITS file.
 
             Args:
                 min_pixperbeam (int, optional): Minimum number of pixels per beam to keep when
                     rebinning during compression. Defaults to 3.
+                convert_to_kelvin (bool, optional): Whether to convert the output to Kelvin.
+                    Default is None, which means it will be determined based on the product
+                    (yes for line products, no for continuum products).
             """
 
             if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
                 raise ValueError(f"postprocessing method should be one of {ALLOWED_POSTPROCESSING_METHODS}")
 
-            self.task_compress(
+            kw = dict(
                 target=target,
                 config=config,
                 product=product,
                 check_files=check_files,
                 postprocessing_method=postprocessing_method,
+                extra_ext_in=ext_ext,
+                extra_ext_out=ext_ext,
+            )
+
+            self.task_compress(
                 do_pb_too=True,
                 do_trimrind=True,
-                extra_ext_in=ext_ext,
-                extra_ext_out=ext_ext,
                 min_pixperbeam=min_pixperbeam,
-            )
+                **kw)
 
-            self.task_convert_units(
-                target=target,
-                config=config,
-                product=product,
-                check_files=check_files,
-                postprocessing_method=postprocessing_method,
-                extra_ext_in=ext_ext,
-                extra_ext_out=ext_ext,
-            )
+            if convert_to_kelvin is None:
+                # default behavior: convert only for line products
+                convert_to_kelvin = product in self._kh.get_line_products()
 
-            self.task_export_to_fits(
-                target=target,
-                config=config,
-                product=product,
-                check_files=check_files,
-                postprocessing_method=postprocessing_method,
-                do_pb_too=True,
-                extra_ext_in=ext_ext,
-                extra_ext_out=ext_ext,
-            )
+            if convert_to_kelvin:
+                self.task_convert_units(**kw)
+                self.task_export_to_fits(do_pb_too=True, **kw)
+            else:
+                self.task_export_to_fits(
+                    do_pb_too=True,
+                    in_tag='pbcorr_trimmed',
+                    out_tag='pbcorr_trimmed_fits',
+                    **kw)
 
             return ()
 
@@ -2327,12 +2338,12 @@ if casa_enabled:
                 do_mosaic: bool = False,
                 do_cleanup: bool = False,
                 do_summarize: bool = False,
-                trim_coarse_beam_edge_channels: bool = False,
                 feather_apod: bool = False,
                 feather_noapod: bool = False,
                 feather_before_mosaic: bool = False,
                 make_directories: bool = True,
                 min_pixperbeam: int = 3,
+                convert_to_kelvin: bool | None = None,
         ):
             """
             Loops over the full set of targets, products, and
@@ -2354,8 +2365,6 @@ if casa_enabled:
                 do_mosaic (bool, optional): If True, run the mosaicking steps. Defaults to False.
                 do_cleanup (bool, optional): If True, run the cleanup steps. Defaults to False.
                 do_summarize (bool, optional): If True, run the summarization steps. Defaults to False.
-                trim_coarse_beam_edge_channels (bool, optional): If True, will trim out edge channels
-                    in the cube with lower resolution beams. Defaults to False
                 feather_apod (bool, optional): If True, will do feathering with apodization. Defaults to False.
                 feather_noapod (bool, optional): If True, will do feathering without apodization. Defaults to False.
                 feather_before_mosaic (bool, optional): If True, will feather each tile before mosaicking.
@@ -2364,6 +2373,8 @@ if casa_enabled:
                     Defaults to True.
                 min_pixperbeam (int, optional): Minimum number of pixels per beam to keep when
                     rebinning during the cleanup (compression) step. Defaults to 3.
+                convert_to_kelvin (bool, optional): If True, will convert the data to Kelvin.
+                    Default is None, which means yes for line products and no for continuum products.
             """
 
             if postprocessing_method not in ALLOWED_POSTPROCESSING_METHODS:
@@ -2643,6 +2654,7 @@ if casa_enabled:
                         check_files=True,
                         postprocessing_method=postprocessing_method,
                         min_pixperbeam=min_pixperbeam,
+                        convert_to_kelvin=convert_to_kelvin,
                     )
 
             # Build reports summarizing the properties of the final
