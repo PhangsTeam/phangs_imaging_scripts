@@ -2338,7 +2338,6 @@ if casa_enabled:
                 do_mosaic: bool = False,
                 do_cleanup: bool = False,
                 do_summarize: bool = False,
-                trim_coarse_beam_edge_channels: bool = False,
                 feather_apod: bool = False,
                 feather_noapod: bool = False,
                 feather_before_mosaic: bool = False,
@@ -2366,8 +2365,6 @@ if casa_enabled:
                 do_mosaic (bool, optional): If True, run the mosaicking steps. Defaults to False.
                 do_cleanup (bool, optional): If True, run the cleanup steps. Defaults to False.
                 do_summarize (bool, optional): If True, run the summarization steps. Defaults to False.
-                trim_coarse_beam_edge_channels (bool, optional): If True, will trim out edge channels
-                    in the cube with lower resolution beams. Defaults to False
                 feather_apod (bool, optional): If True, will do feathering with apodization. Defaults to False.
                 feather_noapod (bool, optional): If True, will do feathering without apodization. Defaults to False.
                 feather_before_mosaic (bool, optional): If True, will feather each tile before mosaicking.
