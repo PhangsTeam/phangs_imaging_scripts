@@ -54,11 +54,11 @@ casa = [
     "casadata >= 2025.9.22",
     "casaplotms >= 2.8.2",
     "casarecipes >= 0.4.0",
-    "casashell >= 6.7.3.21, < 6.7.6.14",
-    "casatasks >= 6.7.3.21, < 6.7.6.14",
-    "casatools >= 6.7.3.21, < 6.7.6.14",
+    "casashell == 6.7.5.18", # Pin to a suitable release for the pipeline
+    "casatasks == 6.7.5.18",
+    "casatools == 6.7.5.18",
     "casaviewer >= 2.4.4 ; platform_system != 'Darwin'",
-    "pipeline@git+https://open-bitbucket.nrao.edu/scm/pipe/pipeline.git",
+    "pipeline@git+https://open-bitbucket.nrao.edu/scm/pipe/pipeline.git@2025.1.0.37",  # Pin to a stable version
 ]
 
 # Optional packages for the test suite
