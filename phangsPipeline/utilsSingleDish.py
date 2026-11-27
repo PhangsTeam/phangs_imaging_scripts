@@ -631,8 +631,9 @@ def getTPSampling(vis, obsid=0, showplot=False, plotfile='', debug=False,
     else:
         rightAscension, declination = au.getRADecForField(vis, field, forcePositiveRA=True, usemstool=True)
         if (debug):
-            print("field coordinates in radians = %f, %f = %s" % (rightAscension, declination,
-                                                                  au.rad2radec(rightAscension, declination)))
+            print("field coordinates in radians = %f, %f = %s" % (
+                float(np.squeeze(rightAscension)), float(np.squeeze(declination)),
+                au.rad2radec(float(np.squeeze(rightAscension)), float(np.squeeze(declination)))))
         if (coordSys.find('AZEL') >= 0 and convert==False):
             rightAscension, declination = au.computeAzElFromRADecMJD([rightAscension,declination],
                                                                   mjd=np.median(times)/86400.,
@@ -674,7 +675,9 @@ def getTPSampling(vis, obsid=0, showplot=False, plotfile='', debug=False,
             yOffSource = np.median(offSourceDec)
             print("     Field source position = %s" % (au.rad2radec(rightAscension, declination,verbose=False)))
             separation = np.degrees(au.angularSeparationRadians(rightAscension, declination, xOffSource, yOffSource))
-            print("Median off source position = %s (separation = %.1farcmin = %.1fdeg)" % (au.rad2radec(xOffSource, yOffSource, verbose=False), separation*60, separation))
+            print("Median off source position = %s (separation = %.1farcmin = %.1fdeg)" % (
+                au.rad2radec(xOffSource, yOffSource, verbose=False),
+                float(np.squeeze(separation))*60, float(np.squeeze(separation))))
         elif (len(offSourceTimes) > 0):
             print("No times in the POINTING table match the times of off source integrations.")
 
@@ -772,20 +775,23 @@ def getTPSampling(vis, obsid=0, showplot=False, plotfile='', debug=False,
             separation, deltaRaRadians, deltaDecRadians, deltaRaRadiansCosdec = au.angularSeparationRadians(xOffSource, yOffSource,
                                                                                        rightAscension, declination,
                                                                                        returnComponents=True)
-            print("Separation from the off source position in relative coordinates = (%+.1f, %+.1f) arcsec" % (deltaRaRadiansCosdec*3600*180/np.pi,
-                                                                        deltaDecRadians*3600*180/np.pi))
+            print("Separation from the off source position in relative coordinates = (%+.1f, %+.1f) arcsec" % (
+                float(np.squeeze(deltaRaRadiansCosdec*3600*180/np.pi)),
+                float(np.squeeze(deltaDecRadians*3600*180/np.pi))))
         if (len(calAtmRA) > 0):
             separation, deltaRaRadians, deltaDecRadians, deltaRaRadiansCosdec = au.angularSeparationRadians(xCalAtm, yCalAtm,
                                                                                        rightAscensionCalAtm, declinationCalAtm,
                                                                                        returnComponents=True)
-            print("Separation from mean atm calib position in relative coordinates = (%+.1f, %+.1f) arcsec" % (deltaRaRadiansCosdec*3600*180/np.pi,
-                                                                        deltaDecRadians*3600*180/np.pi))
+            print("Separation from mean atm calib position in relative coordinates = (%+.1f, %+.1f) arcsec" % (
+                float(np.squeeze(deltaRaRadiansCosdec*3600*180/np.pi)),
+                float(np.squeeze(deltaDecRadians*3600*180/np.pi))))
             if (findSubscans):
                 separation, deltaRaRadians, deltaDecRadians, deltaRaRadiansCosdec = au.angularSeparationRadians(xCalAtmSky, yCalAtmSky,
                                                                                        rightAscensionCalAtm, declinationCalAtm,
                                                                                        returnComponents=True)
-                print("Separation from mean atmcal sky position in relative coordinates = (%+.1f, %+.1f) arcsec" % (deltaRaRadiansCosdec*3600*180/np.pi,
-                                                                        deltaDecRadians*3600*180/np.pi))
+                print("Separation from mean atmcal sky position in relative coordinates = (%+.1f, %+.1f) arcsec" % (
+                    float(np.squeeze(deltaRaRadiansCosdec*3600*180/np.pi)),
+                    float(np.squeeze(deltaDecRadians*3600*180/np.pi))))
 
 
     # convert absolute coordinates to relative arcsec on-the-sky
@@ -1177,14 +1183,18 @@ def getTPSampling(vis, obsid=0, showplot=False, plotfile='', debug=False,
 
         myqa = casaStuff.qatool()
         if (coordSys.find('AZEL') >= 0):
-            azimString = myqa.formxxx('%frad'%(rightAscension), format='deg', prec=5)
-            elevString = myqa.formxxx('%frad'%(declination), format='deg', prec=5)
+            azimString = myqa.formxxx(
+                '%frad'%(float(np.squeeze(rightAscension))), format='deg', prec=5)
+            elevString = myqa.formxxx(
+                '%frad'%(float(np.squeeze(declination))), format='deg', prec=5)
             pb.xlabel('Azimuth offset (arcsec) from %s deg' % azimString)
             pb.ylabel('Elevation offset (arcsec) from %s deg' % elevString)
             pb.xlim([np.min(x), np.max(x)])
         else:
-            raString = myqa.formxxx('%frad'%(rightAscension), format='hms', prec=2)
-            decString = myqa.formxxx('%frad'%(declination), format='dms', prec=0).replace('.',':',2).replace('-0','-').replace('+0','+')
+            raString = myqa.formxxx(
+                '%frad'%(float(np.squeeze(rightAscension))), format='hms', prec=2)
+            decString = myqa.formxxx(
+                '%frad'%(float(np.squeeze(declination))), format='dms', prec=0).replace('.',':',2).replace('-0','-').replace('+0','+')
             if (apparentCoordinates):
                 basis = '(apparent)'
             else:
