@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Set `singlescale_mask_absolute=True` as the default in imaging, reflecting actual imaging usage. (#418).
 - Add optional tests to check if cube channels are noise only, and if so to mask them out (#399).
 - Expose ``max_loops`` for multiscale and singlescale clean in ``loop_imaging`` and chunked ``run_imaging`` (#428).
+- Support reading clean masks in ``ImagingChunkedHandler``, aligned per chunk, with the same primary beam mask fallback as ``ImagingHandler`` (#430).
 
 ### Changed
 
