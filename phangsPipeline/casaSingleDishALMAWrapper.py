@@ -11,7 +11,7 @@ from astropy.io import fits
 from astropy.table import Table
 
 from . import casaStuff
-from .utilsSingleDish import getTPSampling, get_sourcename, read_source_coordinates
+from .utilsSingleDish import get_sourcename, get_singledish_imaging_params
 
 logger = logging.getLogger(__name__)
 
@@ -42,59 +42,6 @@ def extractJyperK(base_path=PATH_CALIBRATION):
     # Copying the jyperk.csv file to the working directory
     shutil.copyfile(file_script, 'jyperk.csv')
 
-def calculate_image_center(vis):
-    """Calculate the image center from the mean positions of the fields in the MS.
-
-    Args:
-        vis (str): Path to the measurement set (MS) file.
-
-    Returns:
-        str: Image center
-    """
-
-    # Get the phase directions
-    tb = casaStuff.tbtool()
-    tb.open(f"{vis}/FIELD")
-    try:
-        # Shape: (2, n_poly_terms, n_fields), in radians
-        phase_dir: np.ndarray = tb.getcol("PHASE_DIR")
-    finally:
-        tb.close()
-
-    # Get the reference frames
-    msmd = casaStuff.msmdtool()
-    msmd.open(vis)
-    try:
-        ref_frames = [msmd.phasecenter(fid)["refer"] for fid in range(msmd.nfields())]
-    finally:
-        msmd.close()
-
-    # Get the unique reference frames. If there are multiple, we will use the first one and log a warning.
-    ref_frames = np.unique(ref_frames)
-    ref_frames = [str(x) for x in ref_frames]
-    if len(ref_frames) > 1:
-        logger.warning("Multiple reference frames found. Using the first one.")
-    ref_frame = ref_frames[0]
-
-    ra: np.ndarray = phase_dir[0, 0, :]
-    dec: np.ndarray = phase_dir[1, 0, :]
-
-    # Convert to Cartesian unit vectors, average, then convert back
-    x = np.mean(np.cos(dec) * np.cos(ra))
-    y = np.mean(np.cos(dec) * np.sin(ra))
-    z = np.mean(np.sin(dec))
-
-    mean_ra = float(np.mod(np.arctan2(y, x), 2 * np.pi))
-    mean_dec = float(np.arctan2(z, np.hypot(x, y)))
-
-    qa = casaStuff.qatool()
-    ra_str = qa.formxxx(f"{mean_ra}rad", format="hms", prec=4)
-    dec_str = qa.formxxx(f"{mean_dec}rad", format="dms", prec=4)
-
-    image_center = f"{ref_frame} {ra_str} {dec_str}"
-
-    return image_center
-
 
 def SDImaging(
     filename,
@@ -103,7 +50,6 @@ def SDImaging(
     vel_cube_range,
     chan_dv_kms,
     restfreq,
-    phcenter="",
     freq_Hz=None,
     overwrite=True,
     keep_only_trimmed=True,
@@ -139,28 +85,18 @@ def SDImaging(
         mymsmd.close()
         logger.info("Reading frequency in image: "+str(freq_Hz))
 
-    diameter = 12.
-    # Appropriate for ALMA 12m's aperture illumination pattern
-    # Specifically, see ALMA Memo #456 (https://library.nrao.edu/public/memos/alma/main/memo456.pdf)
-    # and Todd Hunter's page on the getTPSampling function (https://safe.nrao.edu/wiki/bin/view/ALMA/PrimaryBeamArcsec)
-    fwhmfactor = 1.13
-    c_light = 2.99792458e8 # m/s
-    theorybeam = (fwhmfactor * c_light / (freq_Hz * diameter)) * (180/np.pi) * 3600
-    cell       = theorybeam/9.0
-
-    xSampling, ySampling, maxsize = getTPSampling(filename)
-
-    imsize = int(round(maxsize/cell)*1.5)
-
-    if phcenter == "":
-        coord_phase = read_source_coordinates(filename, source)
-    else:
-        coord_phase = phcenter
+    cell_size, coord_phase, imsize = get_singledish_imaging_params(
+        vis=filename,
+        freq=freq_Hz * u.Hz,
+        dish_dia=12.0 * u.m,
+        oversamp=9.0,
+        padding_factor=1.5,
+    )
 
     logger.info("Start imaging")
     logger.info("Imaging from velocity "+str(start_vel)+", using "+str(nchans_vel)+" channels.")
     logger.info("Rest frequency is "+str(restfreq)+" GHz.")
-    logger.info("Cell and image sizes are: "+str(cell)+"arcsec and "+str(imsize))
+    logger.info("Cell and image sizes are: "+str(cell_size)+"arcsec and "+str(imsize))
     casaStuff.tsdimaging(
         infiles=filename,
         mode='velocity',
@@ -175,7 +111,7 @@ def SDImaging(
         convsupport=6,
         phasecenter=coord_phase,
         imsize=imsize,
-        cell=str(cell)+'arcsec',
+        cell=str(cell_size)+'arcsec',
         overwrite=overwrite,
         outfile=outname,
     )
@@ -509,9 +445,6 @@ def runALMAPipeline(
 
     this_vis = ms_concat_filename
 
-    # Calculate the image center from the concatenated MS
-    image_center = calculate_image_center(vis=this_vis)
-
     for this_product in product_dict:
 
         name_line = product_dict[this_product]['name_line']
@@ -530,7 +463,6 @@ def runALMAPipeline(
             vel_cube_range=vel_cube,
             chan_dv_kms=chan_dv_kms,
             restfreq=freq_rest_GHz,
-            phcenter=image_center,
             freq_Hz=None,
             overwrite=overwrite,
             )
