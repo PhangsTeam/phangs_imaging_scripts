@@ -1199,7 +1199,7 @@ if casa_enabled:
                 do_trimrind=True,
                 do_pb_too=True,
                 in_pb_tag='pb',
-                out_pb_tag='pb_trimmed',
+                out_pb_tag='trimmed_pb',
                 extra_ext_in='',
                 extra_ext_out='',
                 check_files=True,
@@ -1227,11 +1227,11 @@ if casa_enabled:
             fname_dict_out = self._fname_dict(
                 target=target, config=config, product=product, extra_ext=extra_ext_out, imaging_method=imaging_method)
 
-            infile = fname_dict_in['pbcorr_round']
-            outfile = fname_dict_out['pbcorr_trimmed']
+            infile = fname_dict_in[in_tag]
+            outfile = fname_dict_out[out_tag]
 
-            infile_pb = fname_dict_in['pb']
-            outfile_pb = fname_dict_out['trimmed_pb']
+            infile_pb = fname_dict_in[in_pb_tag]
+            outfile_pb = fname_dict_out[out_pb_tag]
 
             # Check input file existence
 
@@ -1300,7 +1300,7 @@ if casa_enabled:
                 if not files_exist:
                     return ()
 
-            template = fname_dict_out['pbcorr_trimmed']
+            template = fname_dict_out[out_tag]
 
             if check_files:
                 files_exist = check_files_exist(outdir + template,
